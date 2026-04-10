@@ -67,6 +67,8 @@ body {
   background-clip: text;
   color: transparent;
   letter-spacing: 2px;
+  /* Явно указываем, чтобы градиент был виден */
+  -webkit-text-fill-color: transparent;
 }
 
 .header__right {
