@@ -4,11 +4,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
-console.log('UIManager module loaded');
-
 export class UIManager {
   constructor() {
-    console.log('UIManager constructor start');
     this.db = window.db;
     this.storage = window.storage;
     this.authManager = null;
@@ -23,7 +20,6 @@ export class UIManager {
     this.debounceTimer = null;
     
     this.bindEvents();
-    console.log('UIManager constructor done');
   }
   
   setAuthManager(auth) { this.authManager = auth; }
@@ -33,8 +29,6 @@ export class UIManager {
   setMatchmaker(mm) { this.matchmaker = mm; }
   
   bindEvents() {
-    console.log('Binding UI events');
-    // Кнопки входа/регистрации
     document.getElementById('login-btn')?.addEventListener('click', () => this.showAuthModal('login'));
     document.getElementById('register-btn')?.addEventListener('click', () => this.showAuthModal('register'));
     document.getElementById('switch-to-register')?.addEventListener('click', (e) => {
@@ -43,7 +37,6 @@ export class UIManager {
     });
     document.getElementById('auth-form')?.addEventListener('submit', (e) => this.handleAuthSubmit(e));
     
-    // Создание игры
     document.getElementById('create-game-btn')?.addEventListener('click', () => this.showCreateModal());
     document.getElementById('create-game-form')?.addEventListener('submit', (e) => this.handleCreateGame(e));
     document.getElementById('game-avatar')?.addEventListener('change', (e) => this.previewAvatar(e));
@@ -52,14 +45,11 @@ export class UIManager {
       el?.addEventListener('input', () => this.validateCreateForm());
     });
     
-    // Магазин и инвентарь
     document.getElementById('shop-btn')?.addEventListener('click', () => this.showShopModal());
     document.getElementById('inventory-btn')?.addEventListener('click', () => this.showInventoryModal());
     
-    // Выход
     document.getElementById('logout-btn')?.addEventListener('click', () => this.authManager.logout());
     
-    // Поиск и фильтры
     document.getElementById('search-input')?.addEventListener('input', (e) => {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
@@ -82,20 +72,16 @@ export class UIManager {
       this.filterAndSortGames();
     });
     
-    // Закрытие модалок
     document.querySelectorAll('.close-modal').forEach(btn => {
       btn.addEventListener('click', () => this.closeAllModals());
     });
     
-    // Закрытие игры
     document.getElementById('close-game-btn')?.addEventListener('click', () => {
       this.hideGameContainer();
     });
     
-    // Рейтинг
     document.getElementById('rate-like')?.addEventListener('click', () => this.submitRating(1));
     document.getElementById('rate-dislike')?.addEventListener('click', () => this.submitRating(-1));
-    console.log('Events bound');
   }
   
   showAuthModal(mode) {
@@ -165,22 +151,19 @@ export class UIManager {
   async loadGames() {
     const grid = document.getElementById('games-grid');
     grid.innerHTML = '<div class="loader">Загрузка игр...</div>';
-    console.log('📡 Loading games from Firestore...');
     
     try {
       const gamesRef = collection(this.db, 'games');
       const q = query(gamesRef, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       this.currentGames = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log('✅ Games loaded:', this.currentGames.length);
     } catch (error) {
-      console.error('❌ Firestore error:', error);
       this.currentGames = [];
-      grid.innerHTML = '<div class="loader">Ошибка загрузки. Проверьте консоль.</div>';
+      grid.innerHTML = '<div class="loader">Ошибка загрузки</div>';
       return;
     }
     
-    // Добавляем локальное демо, если нет игр
+    // Добавляем локальное демо, если игр нет
     if (this.currentGames.length === 0) {
       await this.ensureDemoGameExists();
     }
@@ -391,11 +374,8 @@ export class UIManager {
   }
   
   async ensureDemoGameExists() {
-    console.log('🕹️ Adding local demo game...');
-    
-    // Простая HTML-игра в виде data:URL
-    const demoHtml = `data:text/html;base64,${btoa(`
-<!DOCTYPE html>
+    // Создаём простую игру-кликер через Blob (избегаем проблем с btoa и кириллицей)
+    const demoHtmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -449,8 +429,10 @@ export class UIManager {
     }
   <\/script>
 </body>
-</html>
-    `)}`;
+</html>`;
+
+    const blob = new Blob([demoHtmlContent], { type: 'text/html' });
+    const demoHtmlUrl = URL.createObjectURL(blob);
     
     const demoGame = {
       id: 'local_demo',
@@ -458,7 +440,7 @@ export class UIManager {
       authorNickname: 'BIBLIX',
       players: 1,
       avatarUrl: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%236C5CE7\'/%3E%3Ctext x=\'100\' y=\'120\' font-size=\'50\' fill=\'white\' text-anchor=\'middle\' font-family=\'Arial\'%3E⚡%3C/text%3E%3C/svg%3E',
-      htmlUrl: demoHtml,
+      htmlUrl: demoHtmlUrl,
       likes: 0,
       dislikes: 0,
       createdAt: new Date()
