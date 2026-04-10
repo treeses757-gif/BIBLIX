@@ -1,4 +1,3 @@
-// ========== FILE: src/js/ui/UIManager.js ==========
 import { 
   collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
@@ -163,7 +162,6 @@ export class UIManager {
       return;
     }
     
-    // Добавляем локальное демо, если игр нет
     if (this.currentGames.length === 0) {
       await this.ensureDemoGameExists();
     }
@@ -374,7 +372,6 @@ export class UIManager {
   }
   
   async ensureDemoGameExists() {
-    // Создаём простую игру-кликер через Blob (избегаем проблем с btoa и кириллицей)
     const demoHtmlContent = `<!DOCTYPE html>
 <html>
 <head>
