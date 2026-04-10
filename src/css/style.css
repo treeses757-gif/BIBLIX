@@ -162,6 +162,38 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.btn-outline-small {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  color: white;
+  cursor: pointer;
+}
+
+.btn-outline-small:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.btn-like, .btn-dislike {
+  padding: 12px 24px;
+  font-size: 18px;
+  border-radius: 30px;
+  border: none;
+  cursor: pointer;
+  margin: 0 5px;
+}
+
+.btn-like {
+  background: #2ecc71;
+  color: white;
+}
+
+.btn-dislike {
+  background: #e74c3c;
+  color: white;
+}
+
 /* Filters */
 .filters-section {
   max-width: 1200px;
@@ -512,6 +544,36 @@ body {
   padding: 40px;
   color: var(--text-dim);
   grid-column: 1 / -1;
+}
+
+/* Исправление цвета текста (чёрный -> белый) */
+body, input, select, button, textarea, .modal-content, .game-card, .loader {
+  color: #f0f0f0 !important;
+}
+
+input, select, textarea {
+  color: white !important;
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #aaa !important;
+}
+
+.game-title, .game-author, .game-meta, .skin-card, .inventory-list {
+  color: #f0f0f0 !important;
+}
+
+.btn, .play-btn, .filter-btn, .shop-tab {
+  color: white !important;
+}
+
+.modal h2, .modal label, .auth-switch, .form-error {
+  color: #f0f0f0 !important;
+}
+
+.close-modal {
+  color: #aaa !important;
 }
 
 /* Responsive */
