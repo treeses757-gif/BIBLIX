@@ -1,4 +1,3 @@
-// ========== FILE: src/css/style.css ==========
 :root {
   --bg-dark: #0a0a15;
   --bg-card: rgba(20, 20, 40, 0.7);
@@ -62,13 +61,12 @@ body {
 .header__logo {
   font-size: 28px;
   font-weight: 800;
-  background: linear-gradient(135deg, #fff, var(--primary-light));
+  background: linear-gradient(135deg, #ffffff, var(--primary-light));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   letter-spacing: 2px;
-  /* Явно указываем, чтобы градиент был виден */
-  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 10px rgba(108, 92, 231, 0.5);
 }
 
 .header__right {
@@ -548,7 +546,7 @@ body {
   grid-column: 1 / -1;
 }
 
-/* Исправление цвета текста (чёрный -> белый) */
+/* Исправление цвета текста */
 body, input, select, button, textarea, .modal-content, .game-card, .loader {
   color: #f0f0f0 !important;
 }
