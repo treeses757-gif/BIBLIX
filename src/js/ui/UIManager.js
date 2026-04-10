@@ -1,11 +1,14 @@
 // ========== FILE: src/js/ui/UIManager.js ==========
 import { 
-  collection, getDocs, query, orderBy, where, limit, doc, setDoc, serverTimestamp, updateDoc, increment, arrayUnion 
+  collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
+console.log('UIManager module loaded');
+
 export class UIManager {
   constructor() {
+    console.log('UIManager constructor start');
     this.db = window.db;
     this.storage = window.storage;
     this.authManager = null;
@@ -20,6 +23,7 @@ export class UIManager {
     this.debounceTimer = null;
     
     this.bindEvents();
+    console.log('UIManager constructor done');
   }
   
   setAuthManager(auth) { this.authManager = auth; }
@@ -29,6 +33,7 @@ export class UIManager {
   setMatchmaker(mm) { this.matchmaker = mm; }
   
   bindEvents() {
+    console.log('Binding UI events');
     // Кнопки входа/регистрации
     document.getElementById('login-btn')?.addEventListener('click', () => this.showAuthModal('login'));
     document.getElementById('register-btn')?.addEventListener('click', () => this.showAuthModal('register'));
@@ -90,6 +95,7 @@ export class UIManager {
     // Рейтинг
     document.getElementById('rate-like')?.addEventListener('click', () => this.submitRating(1));
     document.getElementById('rate-dislike')?.addEventListener('click', () => this.submitRating(-1));
+    console.log('Events bound');
   }
   
   showAuthModal(mode) {
@@ -159,17 +165,27 @@ export class UIManager {
   async loadGames() {
     const grid = document.getElementById('games-grid');
     grid.innerHTML = '<div class="loader">Загрузка игр...</div>';
+    console.log('📡 Loading games from Firestore...');
     
     try {
       const gamesRef = collection(this.db, 'games');
       const q = query(gamesRef, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       this.currentGames = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      this.filterAndSortGames();
+      console.log('✅ Games loaded:', this.currentGames.length);
     } catch (error) {
-      console.error(error);
-      grid.innerHTML = '<div class="loader">Ошибка загрузки</div>';
+      console.error('❌ Firestore error:', error);
+      this.currentGames = [];
+      grid.innerHTML = '<div class="loader">Ошибка загрузки. Проверьте консоль.</div>';
+      return;
     }
+    
+    // Добавляем локальное демо, если нет игр
+    if (this.currentGames.length === 0) {
+      await this.ensureDemoGameExists();
+    }
+    
+    this.filterAndSortGames();
   }
   
   filterAndSortGames() {
@@ -375,43 +391,80 @@ export class UIManager {
   }
   
   async ensureDemoGameExists() {
-    if (this.currentGames.length > 0) return;
-    try {
-      const q = query(collection(this.db, 'games'), where('title', '==', 'Кликер (демо)'));
-      const snap = await getDocs(q);
-      if (!snap.empty) return;
-      
-      const demoHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#1a1a2e;color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;} button{padding:20px 40px;font-size:24px;background:#6C5CE7;border:none;border-radius:40px;color:white;cursor:pointer;}</style></head><body><h1>Кликер</h1><p>Счёт: <span id="score">0</span></p><button onclick="increment()">Клик!</button><script>let score=0;function increment(){score++;document.getElementById('score').textContent=score;if(score>=10){window.parent.postMessage({type:'game_over',score},'*');}}<\/script></body></html>`;
-      
-      const blob = new Blob([demoHtml], { type: 'text/html' });
-      const htmlRef = ref(this.storage, `games/demo_${Date.now()}.html`);
-      await uploadBytes(htmlRef, blob);
-      const htmlUrl = await getDownloadURL(htmlRef);
-      
-      const canvas = document.createElement('canvas'); canvas.width=200; canvas.height=200;
-      const ctx = canvas.getContext('2d'); ctx.fillStyle='#6C5CE7'; ctx.fillRect(0,0,200,200);
-      ctx.fillStyle='white'; ctx.font='bold 40px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('CLICK',100,100);
-      const pngBlob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-      const avatarRef = ref(this.storage, `avatars/demo_${Date.now()}.png`);
-      await uploadBytes(avatarRef, pngBlob);
-      const avatarUrl = await getDownloadURL(avatarRef);
-      
-      await setDoc(doc(collection(this.db, 'games')), {
-        title: 'Кликер (демо)',
-        authorNickname: 'BIBLIX',
-        authorUid: 'system',
-        players: 1,
-        avatarUrl,
-        htmlUrl,
-        likes: 0,
-        dislikes: 0,
-        createdAt: serverTimestamp()
-      });
-      
-      this.loadGames();
-    } catch (e) {
-      console.warn('Не удалось создать демо', e);
+    console.log('🕹️ Adding local demo game...');
+    
+    // Простая HTML-игра в виде data:URL
+    const demoHtml = `data:text/html;base64,${btoa(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      background: #1a1a2e;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
     }
+    button {
+      padding: 20px 40px;
+      font-size: 28px;
+      background: #6C5CE7;
+      border: none;
+      border-radius: 50px;
+      color: white;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(108, 92, 231, 0.5);
+      transition: 0.2s;
+    }
+    button:hover {
+      transform: scale(1.05);
+      background: #8A7BFF;
+    }
+    #score {
+      font-size: 48px;
+      margin: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚡ Быстрый кликер</h1>
+  <p>Нажми 10 раз для победы</p>
+  <div id="score">0</div>
+  <button onclick="clicked()">КЛИК!</button>
+  <script>
+    let count = 0;
+    const scoreEl = document.getElementById('score');
+    function clicked() {
+      count++;
+      scoreEl.textContent = count;
+      if (count >= 10) {
+        window.parent.postMessage({ type: 'game_over', score: count }, '*');
+      }
+    }
+  <\/script>
+</body>
+</html>
+    `)}`;
+    
+    const demoGame = {
+      id: 'local_demo',
+      title: '⚡ Кликер (демо)',
+      authorNickname: 'BIBLIX',
+      players: 1,
+      avatarUrl: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%236C5CE7\'/%3E%3Ctext x=\'100\' y=\'120\' font-size=\'50\' fill=\'white\' text-anchor=\'middle\' font-family=\'Arial\'%3E⚡%3C/text%3E%3C/svg%3E',
+      htmlUrl: demoHtml,
+      likes: 0,
+      dislikes: 0,
+      createdAt: new Date()
+    };
+    
+    this.currentGames.push(demoGame);
+    this.filterAndSortGames();
   }
 }
