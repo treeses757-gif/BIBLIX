@@ -156,15 +156,14 @@ export class UIManager {
       const snapshot = await getDocs(q);
       this.currentGames = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
+      console.warn('Firestore error, using empty list');
       this.currentGames = [];
       grid.innerHTML = '<div class="loader">Ошибка загрузки</div>';
       return;
     }
     
-    // Добавляем демо только если игр нет и демо ещё не добавлено
-    if (this.currentGames.length === 0) {
-      await this.ensureDemoGameExists();
-    }
+    // Проверяем, нужно ли добавить демо
+    await this.ensureDemoGameExists();
     
     this.filterAndSortGames();
   }
@@ -372,7 +371,7 @@ export class UIManager {
   }
   
   async ensureDemoGameExists() {
-    // Не добавляем демо, если оно уже есть (по id)
+    // Проверяем, есть ли уже демо в currentGames
     if (this.currentGames.some(g => g.id === 'local_demo')) {
       return;
     }
@@ -449,5 +448,9 @@ export class UIManager {
     };
     
     this.currentGames.push(demoGame);
+    // Если игры уже отрисованы, обновим отображение
+    if (document.getElementById('games-grid').children.length > 0) {
+      this.filterAndSortGames();
+    }
   }
 }
