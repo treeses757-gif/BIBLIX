@@ -1,4 +1,3 @@
-// ========== FILE: src/js/main.js ==========
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
@@ -13,13 +12,11 @@ import { GameLauncher } from "./games/GameLauncher.js";
 import { UserGameController } from "./games/UserGameController.js";
 import { Matchmaker } from "./matchmaking/Matchmaker.js";
 
-// Инициализация Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const rtdb = getDatabase(app);
 
-// Глобальные экземпляры менеджеров
 window.db = db;
 window.storage = storage;
 window.rtdb = rtdb;
@@ -32,7 +29,6 @@ const gameLauncher = new GameLauncher(db, rtdb, auth);
 const matchmaker = new Matchmaker(rtdb, db, auth);
 const userGameController = new UserGameController(rtdb, auth);
 
-// Связывание
 ui.setAuthManager(auth);
 ui.setShopManager(shop);
 ui.setUploadManager(upload);
@@ -44,24 +40,12 @@ upload.setUI(ui);
 gameLauncher.setUI(ui);
 matchmaker.setUI(ui);
 
-// Инициализация приложения
 document.addEventListener('DOMContentLoaded', async () => {
-  // Звёздное поле
   initStarfield();
-  
-  // Feather Icons
   feather.replace();
-  
-  // Проверка авто-входа
   await auth.checkAutoLogin();
-  
-  // Загрузка игр
   await ui.loadGames();
-  
-  // Проверка наличия демо-игры (если коллекция пуста)
-  await ui.ensureDemoGameExists();
-  
-  // Обработчики полноэкранного режима
+  await ui.ensureDemoGameExists(); // дополнительная проверка после загрузки
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
 
@@ -115,5 +99,4 @@ function toggleFullscreen() {
   }
 }
 
-// Экспорт для глобального доступа (для отладки)
 window.BIBLIX = { ui, auth, shop, upload, gameLauncher, matchmaker, userGameController };
