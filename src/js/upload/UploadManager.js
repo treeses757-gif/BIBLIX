@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+import { collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
 export class UploadManager {
@@ -20,21 +20,21 @@ export class UploadManager {
       const avatarExt = avatarFile.name.split('.').pop();
       const avatarPath = `avatars/${Date.now()}_${user.nickname}.${avatarExt}`;
       const avatarRef = ref(this.storage, avatarPath);
-      const avatarSnapshot = await uploadBytes(avatarRef, avatarFile);
-      const avatarUrl = await getDownloadURL(avatarSnapshot.ref);
+      await uploadBytes(avatarRef, avatarFile);
+      const avatarUrl = await getDownloadURL(avatarRef);
       
       // Загрузка HTML
       const htmlPath = `games/${Date.now()}_${user.nickname}.html`;
       const htmlRef = ref(this.storage, htmlPath);
-      const htmlSnapshot = await uploadBytes(htmlRef, htmlFile);
-      const htmlUrl = await getDownloadURL(htmlSnapshot.ref);
+      await uploadBytes(htmlRef, htmlFile);
+      const htmlUrl = await getDownloadURL(htmlRef);
       
       // Создание документа игры
       const gameData = {
         title,
         players,
         authorNickname: user.nickname,
-        authorUid: user.nickname_lower || user.id,
+        authorUid: user.id || user.nickname_lower,
         avatarUrl,
         htmlUrl,
         likes: 0,
@@ -45,22 +45,12 @@ export class UploadManager {
       const docRef = await addDoc(collection(this.db, 'games'), gameData);
       
       // Начисление монет автору
-      const userRef = doc(this.db, 'users', user.nickname_lower);
-      await updateDoc(userRef, { coins: increment(100) });
-      
-      // Обновляем локального пользователя
-      user.coins += 100;
+      await this.auth.addCoins(100);
       
       return docRef.id;
     } catch (error) {
       console.error('Upload error:', error);
-      if (error.code === 'storage/unauthorized') {
-        throw new Error('Нет прав для загрузки файлов. Проверьте правила Storage.');
-      } else if (error.code === 'permission-denied') {
-        throw new Error('Нет доступа к Firestore. Проверьте правила базы данных.');
-      } else {
-        throw new Error('Ошибка загрузки: ' + (error.message || 'неизвестная ошибка'));
-      }
+      throw new Error(`Ошибка загрузки: ${error.message}`);
     }
   }
 }
