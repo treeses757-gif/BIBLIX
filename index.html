@@ -1,36 +1,24 @@
-// ========== FILE: index.html ==========
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>BIBLIX — игровая вселенная</title>
-  <!-- Firebase SDK -->
-  <script type="module">
-    // Импорты будут внутри main.js, здесь только подключение стилей и базовой разметки
-  </script>
-  <!-- Feather Icons -->
   <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
-  <!-- CryptoJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-  <!-- Основной стиль -->
   <link rel="stylesheet" href="src/css/style.css">
 </head>
 <body>
 
-<!-- Звёздный фон (canvas) -->
 <canvas id="starfield"></canvas>
 
-<!-- Шапка -->
 <header class="header glass">
   <div class="header__logo">BIBLIX</div>
   <div class="header__right">
-    <!-- Гостевой блок -->
     <div id="guest-buttons" class="header__guest">
       <button class="btn btn-outline" id="login-btn">Вход</button>
       <button class="btn btn-primary" id="register-btn">Регистрация</button>
     </div>
-    <!-- Авторизованный блок -->
     <div id="user-panel" class="header__user" style="display: none;">
       <div class="user-balance" id="user-balance">💰 500</div>
       <button class="icon-btn" id="shop-btn" title="Магазин">🛒</button>
@@ -43,7 +31,6 @@
   </div>
 </header>
 
-<!-- Фильтры и поиск -->
 <section class="filters-section glass">
   <div class="search-wrapper">
     <input type="text" id="search-input" placeholder="🔍 Поиск игр..." class="search-input">
@@ -62,13 +49,10 @@
   </div>
 </section>
 
-<!-- Сетка карточек игр -->
 <main id="games-grid" class="games-grid">
-  <!-- Динамическое содержимое -->
   <div class="loader">Загрузка игр...</div>
 </main>
 
-<!-- Контейнер для игры (полноэкранный iframe) -->
 <div id="game-container" class="game-container" style="display: none;">
   <div class="game-header">
     <button id="close-game-btn" class="btn btn-outline-small">✕ Закрыть</button>
@@ -77,7 +61,6 @@
   <iframe id="game-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"></iframe>
 </div>
 
-<!-- Модальное окно: Вход / Регистрация -->
 <div id="auth-modal" class="modal" style="display: none;">
   <div class="modal-content glass">
     <span class="close-modal">&times;</span>
@@ -91,7 +74,6 @@
   </div>
 </div>
 
-<!-- Модальное окно: Создание игры -->
 <div id="create-modal" class="modal" style="display: none;">
   <div class="modal-content glass">
     <span class="close-modal">&times;</span>
@@ -119,7 +101,6 @@
   </div>
 </div>
 
-<!-- Модальное окно: Магазин -->
 <div id="shop-modal" class="modal" style="display: none;">
   <div class="modal-content glass">
     <span class="close-modal">&times;</span>
@@ -128,13 +109,10 @@
       <button class="shop-tab active" data-tab="skins">Скины</button>
       <button class="shop-tab" data-tab="boosters">Бустеры (скоро)</button>
     </div>
-    <div id="shop-content" class="shop-content">
-      <!-- Динамически заполняется -->
-    </div>
+    <div id="shop-content" class="shop-content"></div>
   </div>
 </div>
 
-<!-- Модальное окно: Инвентарь -->
 <div id="inventory-modal" class="modal" style="display: none;">
   <div class="modal-content glass">
     <span class="close-modal">&times;</span>
@@ -143,7 +121,6 @@
   </div>
 </div>
 
-<!-- Модальное окно: Матчмейкинг -->
 <div id="matchmaking-modal" class="modal" style="display: none;">
   <div class="modal-content glass matchmaking-content">
     <h2>Поиск соперников</h2>
@@ -154,7 +131,6 @@
   </div>
 </div>
 
-<!-- Модальное окно: Оценка игры -->
 <div id="rating-modal" class="modal" style="display: none;">
   <div class="modal-content glass">
     <span class="close-modal">&times;</span>
@@ -167,10 +143,8 @@
   </div>
 </div>
 
-<!-- Toast уведомления -->
 <div id="toast-container" class="toast-container"></div>
 
-<!-- Основной JavaScript модуль -->
 <script type="module" src="src/js/main.js"></script>
 </body>
 </html>
