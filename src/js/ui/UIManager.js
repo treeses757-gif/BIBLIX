@@ -157,13 +157,18 @@ export class UIManager {
       const snapshot = await getDocs(q);
       this.currentGames = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
+      console.error('Firestore error:', error);
       this.currentGames = [];
-      grid.innerHTML = '<div class="loader">Ошибка загрузки</div>';
+      grid.innerHTML = '<div class="loader">Ошибка загрузки. Проверьте подключение.</div>';
       return;
     }
     
+    // Добавляем локальное демо ТОЛЬКО если игр совсем нет и демо ещё не добавлено
     if (this.currentGames.length === 0) {
-      await this.ensureDemoGameExists();
+      const hasDemo = this.currentGames.some(g => g.id === 'local_demo');
+      if (!hasDemo) {
+        await this.ensureDemoGameExists();
+      }
     }
     
     this.filterAndSortGames();
@@ -309,7 +314,7 @@ export class UIManager {
       await this.uploadManager.uploadGame(title, players, avatarFile, htmlFile);
       this.closeAllModals();
       this.showToast('Игра опубликована! +100 монет', 'success');
-      this.loadGames();
+      await this.loadGames();
       this.updateUserUI();
     } catch (error) {
       this.showToast(error.message, 'error');
@@ -377,36 +382,10 @@ export class UIManager {
 <head>
   <meta charset="UTF-8">
   <style>
-    body {
-      background: #1a1a2e;
-      color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-    }
-    button {
-      padding: 20px 40px;
-      font-size: 28px;
-      background: #6C5CE7;
-      border: none;
-      border-radius: 50px;
-      color: white;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(108, 92, 231, 0.5);
-      transition: 0.2s;
-    }
-    button:hover {
-      transform: scale(1.05);
-      background: #8A7BFF;
-    }
-    #score {
-      font-size: 48px;
-      margin: 20px;
-    }
+    body { background: #1a1a2e; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Segoe UI', sans-serif; }
+    button { padding: 20px 40px; font-size: 28px; background: #6C5CE7; border: none; border-radius: 50px; color: white; cursor: pointer; box-shadow: 0 8px 20px rgba(108, 92, 231, 0.5); transition: 0.2s; }
+    button:hover { transform: scale(1.05); background: #8A7BFF; }
+    #score { font-size: 48px; margin: 20px; }
   </style>
 </head>
 <body>
@@ -444,6 +423,5 @@ export class UIManager {
     };
     
     this.currentGames.push(demoGame);
-    this.filterAndSortGames();
   }
 }
