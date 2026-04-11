@@ -13,6 +13,7 @@ export class Matchmaker {
     this.unsubscribeSession = null;
     this.timerInterval = null;
     this.messageHandler = null;
+    this.clickHandler = null;
   }
 
   setUI(ui) { this.ui = ui; }
@@ -42,10 +43,12 @@ export class Matchmaker {
         const roomId = `${game.id}_${Date.now()}`;
         this.roomId = roomId;
 
+        // Удаляем игроков из очереди
         const updates = {};
         selectedPlayers.forEach(pid => updates[`matchmaking/${game.id}/queue/${pid}`] = null);
         await update(ref(this.rtdb), updates);
 
+        // Создаём сессию
         const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
         const playersObj = {};
         selectedPlayers.forEach(pid => {
@@ -61,6 +64,7 @@ export class Matchmaker {
           createdAt: serverTimestamp()
         });
 
+        // Отписываемся от очереди
         if (this.unsubscribeQueue) {
           this.unsubscribeQueue();
           this.unsubscribeQueue = null;
@@ -93,7 +97,7 @@ export class Matchmaker {
     iframe.src = url;
     container.style.display = 'flex';
 
-    // Ждём готовности iframe
+    // Обработчик готовности iframe
     const messageHandler = (event) => {
       if (event.data && event.data.type === 'iframe_ready') {
         // Отправляем начальные данные
@@ -103,7 +107,7 @@ export class Matchmaker {
           nickname: user.nickname
         }, '*');
         
-        // Отмечаем готовность
+        // Отмечаем готовность в RTDB
         update(child(sessionRef, `players/${user.id}`), { ready: true });
         window.removeEventListener('message', messageHandler);
       }
@@ -111,7 +115,7 @@ export class Matchmaker {
     window.addEventListener('message', messageHandler);
     this.messageHandler = messageHandler;
 
-    // Подписываемся на изменения сессии
+    // Подписка на изменения сессии (основной цикл синхронизации)
     this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
       if (!session) return;
@@ -120,17 +124,19 @@ export class Matchmaker {
       const gameState = session.gameState || {};
       const opponentId = Object.keys(players).find(id => id !== user.id);
       
-      // Проверяем завершение игры
+      // Проверяем, не завершена ли игра
       if (gameState.winner) {
-        if (gameState.winner === user.id) {
-          iframe.contentWindow.postMessage({ type: 'game_over', winner: 'me' }, '*');
-        } else {
-          iframe.contentWindow.postMessage({ type: 'game_over', winner: 'opponent' }, '*');
-        }
+        const winnerIsMe = (gameState.winner === user.id);
+        iframe.contentWindow.postMessage({ 
+          type: 'game_over', 
+          winner: winnerIsMe ? 'me' : 'opponent' 
+        }, '*');
+        // Останавливаем дальнейшие клики
+        iframe.contentWindow.postMessage({ type: 'disable' }, '*');
         return;
       }
 
-      // Отправляем обновление состояния
+      // Отправляем актуальное состояние в iframe
       iframe.contentWindow.postMessage({
         type: 'state_update',
         myScore: gameState[user.id] || 0,
@@ -138,28 +144,32 @@ export class Matchmaker {
         opponentName: players[opponentId]?.nickname || 'ожидание...'
       }, '*');
 
-      // Проверяем готовность всех
+      // Если все готовы, запускаем игру
       const allReady = Object.values(players).every(p => p.ready);
       if (allReady && session.status === 'waiting') {
         await update(sessionRef, { status: 'playing' });
       }
     });
 
-    // Обработка кликов от iframe
+    // Обработчик кликов от iframe
     const clickHandler = (event) => {
       if (event.data && event.data.type === 'player_click') {
         const gameStateRef = child(sessionRef, 'gameState');
+        // Атомарно увеличиваем счёт текущего игрока
         get(gameStateRef).then(snap => {
           const current = snap.val() || {};
           const newScore = (current[user.id] || 0) + 1;
-          update(gameStateRef, { [user.id]: newScore });
+          const updates = { [user.id]: newScore };
           
-          // Проверка на победу (5 очков)
+          // Проверяем победу (5 очков)
           if (newScore >= 5) {
-            update(sessionRef, { 'gameState/winner': user.id });
+            updates.winner = user.id;
           }
+          
+          update(gameStateRef, updates);
         });
       } else if (event.data && event.data.type === 'game_over_ack') {
+        // Игра подтвердила завершение, закрываем контейнер
         this.ui.hideGameContainer();
         this.cleanup();
       }
@@ -167,7 +177,7 @@ export class Matchmaker {
     window.addEventListener('message', clickHandler);
     this.clickHandler = clickHandler;
 
-    // Убираем модалку матчмейкинга
+    // Скрываем модальное окно матчмейкинга
     this.hideMatchmakingModal();
   }
 
