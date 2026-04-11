@@ -55,7 +55,7 @@ export class Matchmaker {
           players: playersObj,
           host: selectedPlayers[0],
           status: 'waiting',
-          gameState: {}, // важно: инициализируем gameState
+          gameState: {},
           createdAt: serverTimestamp()
         });
 
@@ -75,11 +75,6 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const user = this.auth.currentUser;
 
-    const iframe = document.getElementById('game-iframe');
-    iframe.onload = () => {
-      update(child(sessionRef, `players/${user.id}`), { ready: true });
-    };
-
     onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
       if (!session) return;
@@ -98,35 +93,27 @@ export class Matchmaker {
     const iframeEl = document.getElementById('game-iframe');
     document.getElementById('game-title-display').textContent = game.title;
 
-    // Специальная обработка для демо-игры на 2 игроков
+    // Для демо-игры 2 игроков – подстановка параметров
     if (game.id === 'local_demo_2p' && game.htmlContent) {
-      // Аккуратно подставляем roomId, userId и nickname в JavaScript код
       let finalHtml = game.htmlContent;
-      
-      // Удаляем строку с URLSearchParams и заменяем переменные
-      finalHtml = finalHtml.replace(
-        /const urlParams = new URLSearchParams\(window\.location\.search\);[\s\S]*?const roomId = urlParams\.get\('roomId'\);/,
-        `const roomId = '${roomId}';`
-      );
-      finalHtml = finalHtml.replace(
-        /const userId = urlParams\.get\('userId'\);/,
-        `const userId = '${user.id}';`
-      );
-      finalHtml = finalHtml.replace(
-        /const nickname = urlParams\.get\('nickname'\) \|\| 'Игрок';/,
-        `const nickname = '${user.nickname}';`
-      );
+      finalHtml = finalHtml.replace(/__ROOM_ID__/g, roomId);
+      finalHtml = finalHtml.replace(/__USER_ID__/g, user.id);
+      finalHtml = finalHtml.replace(/__NICKNAME__/g, user.nickname);
 
       const blob = new Blob([finalHtml], { type: 'text/html' });
       const blobUrl = URL.createObjectURL(blob);
       iframeEl.src = blobUrl;
-      iframeEl.onload = () => URL.revokeObjectURL(blobUrl);
+      iframeEl.onload = () => {
+        URL.revokeObjectURL(blobUrl);
+        update(child(sessionRef, `players/${user.id}`), { ready: true });
+      };
     } else {
       const url = this.gameLauncher.getGameUrl(game);
       if (url) {
         iframeEl.src = url;
         iframeEl.onload = () => {
           if (game.htmlContent) URL.revokeObjectURL(url);
+          update(child(sessionRef, `players/${user.id}`), { ready: true });
         };
       } else {
         this.ui.showToast('Не удалось загрузить игру', 'error');
