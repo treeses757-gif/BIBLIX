@@ -439,13 +439,13 @@ export class UIManager {
   </div>
   <div id="winnerMessage" style="font-size: 24px; margin-top: 20px;"></div>
   <script>
-    let clickBtn = document.getElementById('clickBtn');
-    let myScoreSpan = document.getElementById('myScore');
-    let opponentScoreSpan = document.getElementById('opponentScore');
-    let opponentNameSpan = document.getElementById('opponentName');
-    let winnerMsg = document.getElementById('winnerMessage');
-    let roomIdSpan = document.getElementById('roomId');
-    let playerNameSpan = document.getElementById('playerName');
+    const clickBtn = document.getElementById('clickBtn');
+    const myScoreSpan = document.getElementById('myScore');
+    const opponentScoreSpan = document.getElementById('opponentScore');
+    const opponentNameSpan = document.getElementById('opponentName');
+    const winnerMsg = document.getElementById('winnerMessage');
+    const roomIdSpan = document.getElementById('roomId');
+    const playerNameSpan = document.getElementById('playerName');
 
     let gameActive = true;
 
@@ -466,11 +466,7 @@ export class UIManager {
       } else if (msg.type === 'game_over') {
         gameActive = false;
         clickBtn.disabled = true;
-        if (msg.winner === 'me') {
-          winnerMsg.textContent = '🎉 Вы победили!';
-        } else {
-          winnerMsg.textContent = '😵 Вы проиграли...';
-        }
+        winnerMsg.textContent = msg.winner === 'me' ? '🎉 Вы победили!' : '😵 Вы проиграли...';
         window.parent.postMessage({ type: 'game_over_ack' }, '*');
       }
     });
