@@ -55,7 +55,7 @@ export class Matchmaker {
           players: playersObj,
           host: selectedPlayers[0],
           status: 'waiting',
-          gameState: {},
+          gameState: {}, // важно: инициализируем gameState
           createdAt: serverTimestamp()
         });
 
@@ -100,23 +100,28 @@ export class Matchmaker {
 
     // Специальная обработка для демо-игры на 2 игроков
     if (game.id === 'local_demo_2p' && game.htmlContent) {
-      // Внедряем параметры в HTML-код
-      const finalHtml = game.htmlContent
-        .replace('roomId = urlParams.get(\'roomId\')', `roomId = '${roomId}'`)
-        .replace('userId = urlParams.get(\'userId\')', `userId = '${user.id}'`)
-        .replace('nickname = urlParams.get(\'nickname\')', `nickname = '${user.nickname}'`)
-        // Для совместимости с тем, как написано в демо (там используется urlParams)
-        .replace('const urlParams = new URLSearchParams(window.location.search);', '')
-        .replace('const roomId = urlParams.get(\'roomId\');', `const roomId = '${roomId}';`)
-        .replace('const userId = urlParams.get(\'userId\');', `const userId = '${user.id}';`)
-        .replace('const nickname = urlParams.get(\'nickname\') || \'Игрок\';', `const nickname = '${user.nickname}';`);
+      // Аккуратно подставляем roomId, userId и nickname в JavaScript код
+      let finalHtml = game.htmlContent;
+      
+      // Удаляем строку с URLSearchParams и заменяем переменные
+      finalHtml = finalHtml.replace(
+        /const urlParams = new URLSearchParams\(window\.location\.search\);[\s\S]*?const roomId = urlParams\.get\('roomId'\);/,
+        `const roomId = '${roomId}';`
+      );
+      finalHtml = finalHtml.replace(
+        /const userId = urlParams\.get\('userId'\);/,
+        `const userId = '${user.id}';`
+      );
+      finalHtml = finalHtml.replace(
+        /const nickname = urlParams\.get\('nickname'\) \|\| 'Игрок';/,
+        `const nickname = '${user.nickname}';`
+      );
 
       const blob = new Blob([finalHtml], { type: 'text/html' });
       const blobUrl = URL.createObjectURL(blob);
       iframeEl.src = blobUrl;
       iframeEl.onload = () => URL.revokeObjectURL(blobUrl);
     } else {
-      // Обычные игры (пользовательские) — загружаем через getGameUrl
       const url = this.gameLauncher.getGameUrl(game);
       if (url) {
         iframeEl.src = url;
