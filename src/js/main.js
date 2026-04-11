@@ -108,5 +108,5 @@ function toggleFullscreen() {
   }
 }
 
-// Экспорт для отладки (опционально)
+// Экспорт для отладки
 window.BIBLIX = { ui, auth, shop, upload, gameLauncher, matchmaker, userGameController };
