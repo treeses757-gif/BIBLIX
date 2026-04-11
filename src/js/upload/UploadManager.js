@@ -39,7 +39,7 @@ export class UploadManager {
         title,
         players,
         authorNickname: user.nickname,
-        authorUid: user.id || user.nickname_lower,
+        authorUid: user.nickname_lower, // используем nickname_lower как UID
         avatarUrl,
         htmlContent,
         likes: 0,
