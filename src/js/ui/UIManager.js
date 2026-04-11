@@ -1,3 +1,4 @@
+// ========== FILE: src/js/ui/UIManager.js ==========
 import { 
   collection, getDocs, query, orderBy 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
@@ -411,7 +412,7 @@ export class UIManager {
       this.currentGames.push(demoGame);
     }
     
-    // Демо для 2 игроков
+    // Демо для 2 игроков (исправленная версия с Firebase v8)
     if (!this.currentGames.some(g => g.id === 'local_demo_2p')) {
       const demo2pHtml = `<!DOCTYPE html>
 <html>
@@ -424,6 +425,8 @@ export class UIManager {
     .score { font-size: 48px; margin: 20px; }
     .opponent { opacity: 0.8; }
   </style>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
   <h1>⚔️ Дуэль кликеров</h1>
@@ -436,37 +439,49 @@ export class UIManager {
     <div class="score">Очки соперника: <span id="opponentScore">0</span></div>
   </div>
   <div id="winnerMessage" style="font-size: 24px; margin-top: 20px;"></div>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-    import { getDatabase, ref, set, onValue, update, child } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyADQHyaiHrnCzk-IsrgZguP1Sl6eRqo9pc",
       authDomain: "minigames-fb308.firebaseapp.com",
       projectId: "minigames-fb308",
+      databaseURL: "https://minigames-fb308-default-rtdb.firebaseio.com",
       storageBucket: "minigames-fb308.firebasestorage.app",
       messagingSenderId: "73826070494",
       appId: "1:73826070494:web:23dd86d36861af4190f74f"
     };
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('roomId');
     const userId = urlParams.get('userId');
-    const nickname = urlParams.get('nickname');
+    const nickname = urlParams.get('nickname') || 'Игрок';
+
     document.getElementById('roomId').textContent = roomId || 'неизвестно';
-    document.getElementById('playerName').textContent = nickname || 'Вы';
-    if (!roomId || !userId) throw new Error('No roomId');
-    const sessionRef = ref(db, 'gameSessions/' + roomId);
-    const myPlayerRef = child(sessionRef, 'players/' + userId);
-    const gameStateRef = child(sessionRef, 'gameState');
-    let myScore = 0, opponentId = null, gameEnded = false;
+    document.getElementById('playerName').textContent = nickname;
+
+    if (!roomId || !userId) {
+      document.body.innerHTML = '<h2>Ошибка: нет данных комнаты</h2>';
+      throw new Error('No roomId');
+    }
+
+    const sessionRef = db.ref('gameSessions/' + roomId);
+    const myPlayerRef = sessionRef.child('players/' + userId);
+    const gameStateRef = sessionRef.child('gameState');
+
+    let myScore = 0;
+    let opponentId = null;
+    let gameEnded = false;
+
     const clickBtn = document.getElementById('clickBtn');
     const myScoreSpan = document.getElementById('myScore');
     const opponentScoreSpan = document.getElementById('opponentScore');
     const opponentNameSpan = document.getElementById('opponentName');
     const winnerMsg = document.getElementById('winnerMessage');
-    update(myPlayerRef, { ready: true, score: 0 });
-    onValue(sessionRef, (snapshot) => {
+
+    myPlayerRef.update({ ready: true, score: 0 });
+
+    sessionRef.on('value', (snapshot) => {
       const session = snapshot.val();
       if (!session) return;
       const players = session.players || {};
@@ -493,11 +508,12 @@ export class UIManager {
         }
       }
     });
+
     clickBtn.addEventListener('click', () => {
       if (gameEnded) return;
-      update(gameStateRef, { [userId]: myScore + 1 });
+      gameStateRef.child(userId).set(myScore + 1);
     });
-  <\/script>
+  </script>
 </body>
 </html>`;
       const blob = new Blob([demo2pHtml], { type: 'text/html' });
