@@ -11,7 +11,6 @@ export class GameLauncher {
 
   setUI(ui) { this.ui = ui; }
 
-  // Возвращает URL для iframe (Blob URL или готовый)
   getGameUrl(game) {
     if (game.htmlContent) {
       const blob = new Blob([game.htmlContent], { type: 'text/html' });
