@@ -1,7 +1,7 @@
 // ========== FILE: src/js/ui/UIManager.js ==========
 import { 
   collection, getDocs, query, orderBy, where, limit, 
-  doc, getDoc, setDoc, serverTimestamp 
+  doc, setDoc, serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 // Встроенная демо-игра для 2 игроков (дуэль кликеров)
@@ -59,7 +59,6 @@ const demo2pHtml = `<!DOCTYPE html>
     const myPlayerRef = sessionRef.child('players/' + userId);
     const gameStateRef = sessionRef.child('gameState');
 
-    let myScore = 0;
     let opponentId = null;
     let gameEnded = false;
 
@@ -83,7 +82,7 @@ const demo2pHtml = `<!DOCTYPE html>
         opponentNameSpan.textContent = players[opponentId].nickname || 'Соперник';
         opponentScoreSpan.textContent = gameState[opponentId] || 0;
       }
-      myScore = gameState[userId] || 0;
+      const myScore = gameState[userId] || 0;
       myScoreSpan.textContent = myScore;
       if (!gameEnded) {
         if (myScore >= 5) {
@@ -100,7 +99,7 @@ const demo2pHtml = `<!DOCTYPE html>
       }
     });
 
-    // Исправление: атомарное увеличение счёта через транзакцию
+    // Атомарное увеличение счёта через транзакцию
     clickBtn.addEventListener('click', () => {
       if (gameEnded) return;
       gameStateRef.child(userId).transaction((currentScore) => {
@@ -124,7 +123,7 @@ export class UIManager {
     this.gameLauncher = null;
     this.matchmaker = null;
     
-    // Привязка методов к контексту
+    // Привязка методов
     this.updateUserUI = this.updateUserUI.bind(this);
     this.showToast = this.showToast.bind(this);
     this.closeAllModals = this.closeAllModals.bind(this);
@@ -205,7 +204,7 @@ export class UIManager {
     
     grid.innerHTML = filtered.map(game => this.createGameCard(game)).join('');
     
-    // Навешиваем обработчики
+    // Обработчики
     grid.querySelectorAll('.play-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -231,9 +230,12 @@ export class UIManager {
     const rating = likes - dislikes;
     const players = game.players || 1;
     
+    // Встроенный SVG‑плейсхолдер вместо via.placeholder.com
+    const defaultAvatar = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%236C5CE7\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'white\' font-size=\'80\'%3E🎮%3C/text%3E%3C/svg%3E';
+    
     return `
       <div class="game-card" data-game-id="${game.id}">
-        <img class="game-avatar" src="${game.avatarUrl || 'https://via.placeholder.com/200?text=Game'}" alt="${game.title}">
+        <img class="game-avatar" src="${game.avatarUrl || defaultAvatar}" alt="${game.title}">
         <div class="game-title">${game.title}</div>
         <div class="game-author">от ${game.authorNickname || 'Аноним'}</div>
         <div class="game-meta">
@@ -276,14 +278,12 @@ export class UIManager {
     }
     
     if (game.players > 1) {
-      // Мультиплеер — запускаем матчмейкинг
       if (this.matchmaker) {
         this.matchmaker.startMatchmaking(game);
       } else {
         this.showToast('Мультиплеер временно недоступен', 'error');
       }
     } else {
-      // Одиночная игра
       if (this.gameLauncher) {
         this.gameLauncher.launchSinglePlayer(game);
       } else {
@@ -297,7 +297,6 @@ export class UIManager {
     const iframe = document.getElementById('game-iframe');
     container.style.display = 'none';
     iframe.src = '';
-    window.removeEventListener('message', this.gameLauncher?.handleGameMessage);
   }
 
   // ========== АВТОРИЗАЦИЯ И ПРОФИЛЬ ==========
@@ -372,7 +371,7 @@ export class UIManager {
         }
         modal.style.display = 'none';
         form.reset();
-        await this.loadGames(); // Обновляем список (может быть новый автор)
+        await this.loadGames();
       } catch (error) {
         this.showToast(error.message, 'error');
       }
@@ -401,20 +400,23 @@ export class UIManager {
     toast.textContent = message;
     container.appendChild(toast);
     
-    setTimeout(() => {
-      toast.remove();
-    }, 4000);
+    setTimeout(() => toast.remove(), 4000);
   }
 
   // ========== ДЕМО-ИГРА ==========
   async ensureDemoGameExists() {
     try {
       const gamesRef = collection(window.db, 'games');
-      const q = query(gamesRef, where('title', '==', '⚔️ Дуэль кликеров'), limit(1));
+      // Проверяем по названию И автору 'system', чтобы избежать дублирования
+      const q = query(
+        gamesRef, 
+        where('title', '==', '⚔️ Дуэль кликеров'),
+        where('authorUid', '==', 'system'),
+        limit(1)
+      );
       const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
-        // Создаём демо-игру
         const demoGame = {
           title: '⚔️ Дуэль кликеров',
           players: 2,
@@ -437,59 +439,37 @@ export class UIManager {
 
   // ========== ПРИВЯЗКА СОБЫТИЙ ==========
   initEventListeners() {
-    // Кнопки входа/регистрации
     document.getElementById('login-btn')?.addEventListener('click', () => this.openAuthModal('login'));
     document.getElementById('register-btn')?.addEventListener('click', () => this.openAuthModal('register'));
-    
-    // Выход
     document.getElementById('logout-btn')?.addEventListener('click', () => this.auth.logout());
     
-    // Магазин и инвентарь
     document.getElementById('shop-btn')?.addEventListener('click', () => {
-      if (!this.auth.currentUser) {
-        this.openAuthModal('login');
-        return;
-      }
+      if (!this.auth.currentUser) return this.openAuthModal('login');
       this.shop.renderShop();
       document.getElementById('shop-modal').style.display = 'flex';
     });
     
     document.getElementById('inventory-btn')?.addEventListener('click', () => {
-      if (!this.auth.currentUser) {
-        this.openAuthModal('login');
-        return;
-      }
+      if (!this.auth.currentUser) return this.openAuthModal('login');
       this.shop.renderInventory();
       document.getElementById('inventory-modal').style.display = 'flex';
     });
     
-    // Создание игры
     document.getElementById('create-game-btn')?.addEventListener('click', () => {
-      if (!this.auth.currentUser) {
-        this.openAuthModal('login');
-        return;
-      }
+      if (!this.auth.currentUser) return this.openAuthModal('login');
       document.getElementById('create-modal').style.display = 'flex';
     });
     
-    // Закрытие модалок по клику на крестик
     document.querySelectorAll('.close-modal').forEach(btn => {
-      btn.addEventListener('click', () => {
-        btn.closest('.modal').style.display = 'none';
-      });
+      btn.addEventListener('click', () => btn.closest('.modal').style.display = 'none');
     });
     
-    // Закрытие по клику вне модалки
     window.addEventListener('click', (e) => {
-      if (e.target.classList.contains('modal')) {
-        e.target.style.display = 'none';
-      }
+      if (e.target.classList.contains('modal')) e.target.style.display = 'none';
     });
     
-    // Закрытие игры
     document.getElementById('close-game-btn')?.addEventListener('click', () => this.hideGameContainer());
     
-    // Форма создания игры
     const createForm = document.getElementById('create-game-form');
     createForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -516,7 +496,6 @@ export class UIManager {
       }
     });
     
-    // Предпросмотр аватарки
     document.getElementById('game-avatar')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
@@ -530,7 +509,6 @@ export class UIManager {
       }
     });
     
-    // Отображение имени HTML-файла
     document.getElementById('game-html')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
@@ -538,12 +516,10 @@ export class UIManager {
       }
     });
     
-    // Отмена матчмейкинга
     document.getElementById('cancel-matchmaking')?.addEventListener('click', () => {
       this.matchmaker?.cancelMatchmaking();
     });
     
-    // Оценка игры
     document.getElementById('rate-like')?.addEventListener('click', async () => {
       const gameId = this.gameLauncher?.lastPlayedGameId;
       if (gameId) {
@@ -571,6 +547,3 @@ export class UIManager {
     });
   }
 }
-
-// Инициализация слушателей после создания экземпляра
-// В main.js после new UIManager() нужно вызвать ui.initEventListeners()
