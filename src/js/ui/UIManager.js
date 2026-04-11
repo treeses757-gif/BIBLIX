@@ -106,6 +106,9 @@ const demo2pHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Data URL для аватарки по умолчанию (фиолетовый градиент с текстом "Game")
+const defaultAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%236C5CE7'/%3E%3Ctext x='50%25' y='55%25' font-family='Arial' font-size='24' fill='white' text-anchor='middle' dy='.3em'%3EGame%3C/text%3E%3C/svg%3E";
+
 export class UIManager {
   constructor() {
     this.auth = null;
@@ -222,7 +225,7 @@ export class UIManager {
 
     grid.innerHTML = games.map(game => {
       const rating = ((game.likes || 0) - (game.dislikes || 0)).toFixed(0);
-      const avatar = game.avatarUrl || 'https://via.placeholder.com/200?text=Game';
+      const avatar = game.avatarUrl || defaultAvatar;
       return `
         <div class="game-card" data-game-id="${game.id}">
           <img class="game-avatar" src="${avatar}" alt="${game.title}" loading="lazy">
@@ -291,7 +294,7 @@ export class UIManager {
       players: 2,
       authorNickname: 'BIBLIX',
       authorUid: 'system',
-      avatarUrl: 'https://via.placeholder.com/200/6C5CE7/ffffff?text=Duo',
+      avatarUrl: defaultAvatar,
       htmlContent: demo2pHtml,
       likes: 0,
       dislikes: 0,
