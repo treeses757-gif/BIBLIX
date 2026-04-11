@@ -58,7 +58,8 @@
     <button id="close-game-btn" class="btn btn-outline-small">✕ Закрыть</button>
     <span id="game-title-display"></span>
   </div>
-  <iframe id="game-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"></iframe>
+  <!-- убрали allow-same-origin для безопасности -->
+  <iframe id="game-iframe" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
 </div>
 
 <div id="auth-modal" class="modal" style="display: none;">
