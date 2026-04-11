@@ -11,6 +11,17 @@ export class GameLauncher {
 
   setUI(ui) { this.ui = ui; }
 
+  // Возвращает URL для iframe (Blob URL или готовый)
+  getGameUrl(game) {
+    if (game.htmlContent) {
+      const blob = new Blob([game.htmlContent], { type: 'text/html' });
+      return URL.createObjectURL(blob);
+    } else if (game.htmlUrl) {
+      return game.htmlUrl;
+    }
+    return null;
+  }
+
   launchSinglePlayer(game) {
     this.lastPlayedGameId = game.id;
     const container = document.getElementById('game-container');
@@ -19,21 +30,19 @@ export class GameLauncher {
 
     titleDisplay.textContent = game.title;
 
-    if (game.htmlContent) {
-      const blob = new Blob([game.htmlContent], { type: 'text/html' });
-      const blobUrl = URL.createObjectURL(blob);
-      iframe.src = blobUrl;
-      iframe.onload = () => URL.revokeObjectURL(blobUrl);
-    } else if (game.htmlUrl) {
-      // обратная совместимость
-      iframe.src = game.htmlUrl;
-    } else {
+    const url = this.getGameUrl(game);
+    if (!url) {
       this.ui.showToast('Не удалось загрузить игру', 'error');
       this.ui.hideGameContainer();
       return;
     }
 
+    iframe.src = url;
+    iframe.onload = () => {
+      if (game.htmlContent) URL.revokeObjectURL(url);
+    };
     container.style.display = 'flex';
+
     window.addEventListener('message', this.handleGameMessage);
     this.rewardAuthor(game);
   }
