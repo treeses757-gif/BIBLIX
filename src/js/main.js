@@ -1,6 +1,6 @@
+// ========== FILE: src/js/main.js ==========
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -12,23 +12,25 @@ import { GameLauncher } from "./games/GameLauncher.js";
 import { UserGameController } from "./games/UserGameController.js";
 import { Matchmaker } from "./matchmaking/Matchmaker.js";
 
+// Инициализация Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app);
 const rtdb = getDatabase(app);
 
+// Глобальные ссылки для доступа из других модулей
 window.db = db;
-window.storage = storage;
 window.rtdb = rtdb;
 
+// Создание менеджеров
 const ui = new UIManager();
 const auth = new AuthManager(db);
 const shop = new ShopManager(db, auth);
-const upload = new UploadManager(db, storage, auth);
+const upload = new UploadManager(db, null, auth); // Storage больше не используется
 const gameLauncher = new GameLauncher(db, rtdb, auth);
-const matchmaker = new Matchmaker(rtdb, db, auth);
+const matchmaker = new Matchmaker(rtdb, db, auth, gameLauncher); // Передаём gameLauncher
 const userGameController = new UserGameController(rtdb, auth);
 
+// Связывание зависимостей
 ui.setAuthManager(auth);
 ui.setShopManager(shop);
 ui.setUploadManager(upload);
@@ -40,15 +42,17 @@ upload.setUI(ui);
 gameLauncher.setUI(ui);
 matchmaker.setUI(ui);
 
+// Инициализация после загрузки DOM
 document.addEventListener('DOMContentLoaded', async () => {
   initStarfield();
   feather.replace();
   await auth.checkAutoLogin();
   await ui.loadGames();
-  await ui.ensureDemoGameExists(); // дополнительная проверка после загрузки
+  await ui.ensureDemoGameExists();
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
 
+// Звёздное поле
 function initStarfield() {
   const canvas = document.getElementById('starfield');
   const ctx = canvas.getContext('2d');
@@ -99,4 +103,5 @@ function toggleFullscreen() {
   }
 }
 
+// Экспорт для отладки
 window.BIBLIX = { ui, auth, shop, upload, gameLauncher, matchmaker, userGameController };
