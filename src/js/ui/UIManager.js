@@ -368,47 +368,20 @@ export class UIManager {
   }
   
   async ensureDemoGameExists() {
-    // Проверяем, есть ли уже демо-игры
+    // Проверяем, есть ли уже демо-игры в текущем списке
     const hasSolo = this.currentGames.some(g => g.id === 'local_demo_1p');
     const hasDuel = this.currentGames.some(g => g.id === 'local_demo_2p');
     
     if (!hasSolo) {
-      // Одиночный кликер
       const demoHtmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <style>
-    body {
-      background: #1a1a2e;
-      color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-    }
-    button {
-      padding: 20px 40px;
-      font-size: 28px;
-      background: #6C5CE7;
-      border: none;
-      border-radius: 50px;
-      color: white;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(108, 92, 231, 0.5);
-      transition: 0.2s;
-    }
-    button:hover {
-      transform: scale(1.05);
-      background: #8A7BFF;
-    }
-    #score {
-      font-size: 48px;
-      margin: 20px;
-    }
+    body { background: #1a1a2e; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Segoe UI', sans-serif; }
+    button { padding: 20px 40px; font-size: 28px; background: #6C5CE7; border: none; border-radius: 50px; color: white; cursor: pointer; box-shadow: 0 8px 20px rgba(108, 92, 231, 0.5); transition: 0.2s; }
+    button:hover { transform: scale(1.05); background: #8A7BFF; }
+    #score { font-size: 48px; margin: 20px; }
   </style>
 </head>
 <body>
@@ -429,8 +402,6 @@ export class UIManager {
   <\/script>
 </body>
 </html>`;
-      const blob1 = new Blob([demoHtmlContent], { type: 'text/html' });
-      const demoHtmlUrl = URL.createObjectURL(blob1);
       
       this.currentGames.push({
         id: 'local_demo_1p',
@@ -439,7 +410,6 @@ export class UIManager {
         players: 1,
         avatarUrl: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%236C5CE7\'/%3E%3Ctext x=\'100\' y=\'120\' font-size=\'50\' fill=\'white\' text-anchor=\'middle\' font-family=\'Arial\'%3E⚡%3C/text%3E%3C/svg%3E',
         htmlContent: demoHtmlContent,
-        htmlUrl: demoHtmlUrl,
         likes: 0,
         dislikes: 0,
         createdAt: new Date()
@@ -447,7 +417,6 @@ export class UIManager {
     }
     
     if (!hasDuel) {
-      // Дуэль для 2 игроков
       const demo2pHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -549,9 +518,6 @@ export class UIManager {
   </script>
 </body>
 </html>`;
-
-      const blob2 = new Blob([demo2pHtml], { type: 'text/html' });
-      const demo2pUrl = URL.createObjectURL(blob2);
       
       this.currentGames.push({
         id: 'local_demo_2p',
@@ -560,7 +526,6 @@ export class UIManager {
         players: 2,
         avatarUrl: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%23e74c3c\'/%3E%3Ctext x=\'100\' y=\'120\' font-size=\'50\' fill=\'white\' text-anchor=\'middle\' font-family=\'Arial\'%3E⚔%3C/text%3E%3C/svg%3E',
         htmlContent: demo2pHtml,
-        htmlUrl: demo2pUrl,
         likes: 0,
         dislikes: 0,
         createdAt: new Date()
