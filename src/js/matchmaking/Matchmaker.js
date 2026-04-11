@@ -1,4 +1,4 @@
-import { ref, set, onValue, update, remove, serverTimestamp, child } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, onValue, update, remove, serverTimestamp, child, runTransaction } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
@@ -10,7 +10,9 @@ export class Matchmaker {
     this.currentGame = null;
     this.roomId = null;
     this.unsubscribeQueue = null;
+    this.unsubscribeSession = null;
     this.timerInterval = null;
+    this.cleanupFunctions = [];
   }
 
   setUI(ui) { this.ui = ui; }
@@ -75,54 +77,89 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const user = this.auth.currentUser;
 
-    onValue(sessionRef, async (snapshot) => {
+    this.ui.hideGameContainer();
+    const container = document.getElementById('game-container');
+    const iframe = document.getElementById('game-iframe');
+    document.getElementById('game-title-display').textContent = game.title;
+
+    const url = this.gameLauncher.getGameUrl(game);
+    if (!url) {
+      this.ui.showToast('Не удалось загрузить игру', 'error');
+      this.hideMatchmakingModal();
+      return;
+    }
+    iframe.src = url;
+    container.style.display = 'flex';
+
+    const onIframeReady = (event) => {
+      if (event.data && event.data.type === 'iframe_ready') {
+        iframe.contentWindow.postMessage({
+          type: 'init',
+          roomId,
+          nickname: user.nickname
+        }, '*');
+        update(child(sessionRef, `players/${user.id}`), { ready: true });
+        window.removeEventListener('message', onIframeReady);
+      }
+    };
+    window.addEventListener('message', onIframeReady);
+    this.cleanupFunctions.push(() => window.removeEventListener('message', onIframeReady));
+
+    this.unsubscribeSession = onValue(sessionRef, (snapshot) => {
       const session = snapshot.val();
       if (!session) return;
-      if (session.status === 'playing') return;
+      
+      const players = session.players || {};
+      const gameState = session.gameState || {};
+      const opponentId = Object.keys(players).find(id => id !== user.id);
+      
+      if (gameState.winner) {
+        const winnerMsg = gameState.winner === user.id ? 'me' : 'opponent';
+        iframe.contentWindow.postMessage({ type: 'game_over', winner: winnerMsg }, '*');
+        return;
+      }
 
-      const players = session.players;
+      iframe.contentWindow.postMessage({
+        type: 'state_update',
+        myScore: gameState[user.id] || 0,
+        opponentScore: gameState[opponentId] || 0,
+        opponentName: players[opponentId]?.nickname || 'ожидание...'
+      }, '*');
+
       const allReady = Object.values(players).every(p => p.ready);
-
       if (allReady && session.status === 'waiting') {
-        await update(sessionRef, { status: 'playing' });
+        update(sessionRef, { status: 'playing' });
       }
     });
 
-    this.ui.hideGameContainer();
-    const container = document.getElementById('game-container');
-    const iframeEl = document.getElementById('game-iframe');
-    document.getElementById('game-title-display').textContent = game.title;
-
-    // Для демо-игры 2 игроков – подстановка параметров
-    if (game.id === 'local_demo_2p' && game.htmlContent) {
-      let finalHtml = game.htmlContent;
-      finalHtml = finalHtml.replace(/__ROOM_ID__/g, roomId);
-      finalHtml = finalHtml.replace(/__USER_ID__/g, user.id);
-      finalHtml = finalHtml.replace(/__NICKNAME__/g, user.nickname);
-
-      const blob = new Blob([finalHtml], { type: 'text/html' });
-      const blobUrl = URL.createObjectURL(blob);
-      iframeEl.src = blobUrl;
-      iframeEl.onload = () => {
-        URL.revokeObjectURL(blobUrl);
-        update(child(sessionRef, `players/${user.id}`), { ready: true });
-      };
-    } else {
-      const url = this.gameLauncher.getGameUrl(game);
-      if (url) {
-        iframeEl.src = url;
-        iframeEl.onload = () => {
-          if (game.htmlContent) URL.revokeObjectURL(url);
-          update(child(sessionRef, `players/${user.id}`), { ready: true });
-        };
-      } else {
-        this.ui.showToast('Не удалось загрузить игру', 'error');
-        this.hideMatchmakingModal();
-        return;
+    const onPlayerClick = (event) => {
+      if (event.data && event.data.type === 'player_click') {
+        const scoreRef = child(sessionRef, `gameState/${user.id}`);
+        // Атомарный инкремент – исправление рассинхрона
+        runTransaction(scoreRef, (current) => (current || 0) + 1)
+          .then((result) => {
+            if (result.committed) {
+              const newScore = result.snapshot.val();
+              if (newScore >= 5) {
+                update(sessionRef, { 'gameState/winner': user.id });
+              }
+            }
+          })
+          .catch(console.warn);
       }
-    }
+    };
+    window.addEventListener('message', onPlayerClick);
+    this.cleanupFunctions.push(() => window.removeEventListener('message', onPlayerClick));
 
-    container.style.display = 'flex';
+    const onGameOverAck = (event) => {
+      if (event.data && event.data.type === 'game_over_ack') {
+        this.ui.hideGameContainer();
+        this.cleanup();
+      }
+    };
+    window.addEventListener('message', onGameOverAck);
+    this.cleanupFunctions.push(() => window.removeEventListener('message', onGameOverAck));
+
     this.hideMatchmakingModal();
   }
 
@@ -132,8 +169,22 @@ export class Matchmaker {
       const user = this.auth.currentUser;
       remove(ref(this.rtdb, `matchmaking/${this.currentGame.id}/queue/${user.id}`));
     }
-    this.hideMatchmakingModal();
+    this.cleanup();
+  }
+
+  cleanup() {
+    if (this.unsubscribeQueue) {
+      this.unsubscribeQueue();
+      this.unsubscribeQueue = null;
+    }
+    if (this.unsubscribeSession) {
+      this.unsubscribeSession();
+      this.unsubscribeSession = null;
+    }
+    this.cleanupFunctions.forEach(fn => fn());
+    this.cleanupFunctions = [];
     this.stopTimer();
+    this.hideMatchmakingModal();
   }
 
   showMatchmakingModal() {
