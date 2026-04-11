@@ -25,9 +25,9 @@ window.rtdb = rtdb;
 const ui = new UIManager();
 const auth = new AuthManager(db);
 const shop = new ShopManager(db, auth);
-const upload = new UploadManager(db, null, auth); // Storage больше не используется
+const upload = new UploadManager(db, null, auth);
 const gameLauncher = new GameLauncher(db, rtdb, auth);
-const matchmaker = new Matchmaker(rtdb, db, auth, gameLauncher); // Передаём gameLauncher
+const matchmaker = new Matchmaker(rtdb, db, auth, gameLauncher);
 const userGameController = new UserGameController(rtdb, auth);
 
 // Связывание зависимостей
@@ -46,9 +46,14 @@ matchmaker.setUI(ui);
 document.addEventListener('DOMContentLoaded', async () => {
   initStarfield();
   feather.replace();
+  
+  // Привязываем обработчики событий UI
+  ui.bindEvents();
+  
   await auth.checkAutoLogin();
   await ui.loadGames();
   await ui.ensureDemoGameExists();
+  
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
 
@@ -103,5 +108,5 @@ function toggleFullscreen() {
   }
 }
 
-// Экспорт для отладки
+// Экспорт для отладки (опционально)
 window.BIBLIX = { ui, auth, shop, upload, gameLauncher, matchmaker, userGameController };
