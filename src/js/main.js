@@ -25,9 +25,9 @@ window.rtdb = rtdb;
 const ui = new UIManager();
 const auth = new AuthManager(db);
 const shop = new ShopManager(db, auth);
-const upload = new UploadManager(db, null, auth); // Storage больше не используется
+const upload = new UploadManager(db, null, auth);
 const gameLauncher = new GameLauncher(db, rtdb, auth);
-const matchmaker = new Matchmaker(rtdb, db, auth, gameLauncher); // Передаём gameLauncher
+const matchmaker = new Matchmaker(rtdb, db, auth, gameLauncher);
 const userGameController = new UserGameController(rtdb, auth);
 
 // Связывание зависимостей
@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await auth.checkAutoLogin();
   await ui.loadGames();
   await ui.ensureDemoGameExists();
+  ui.initEventListeners(); // <-- добавлено
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
 
