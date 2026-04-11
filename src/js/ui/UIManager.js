@@ -3,7 +3,10 @@ import {
   collection, query, orderBy, limit, getDocs, where, startAfter, doc, getDoc, setDoc, updateDoc, increment 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
-// Демо-игра 2 игроков (встроенная)
+// Встроенная аватарка для демо-игры (base64)
+const demoAvatarDataURL = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%236C5CE7'/%3E%3Ctext x='50%25' y='50%25' font-size='80' fill='white' text-anchor='middle' dy='.3em'%3EDUO%3C/text%3E%3C/svg%3E";
+
+// Демо-игра 2 игроков (встроенная) на Firebase v9
 const demo2pHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -15,21 +18,10 @@ const demo2pHtml = `<!DOCTYPE html>
     .score { font-size: 48px; margin: 20px; }
     .opponent { opacity: 0.8; }
   </style>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-</head>
-<body>
-  <h1>⚔️ Дуэль кликеров</h1>
-  <p>Комната: <span id="roomId"></span></p>
-  <p>Вы: <span id="playerName"></span></p>
-  <div class="score">Ваши очки: <span id="myScore">0</span></div>
-  <button id="clickBtn">КЛИК!</button>
-  <div class="opponent">
-    <p>Соперник: <span id="opponentName">ожидание...</span></p>
-    <div class="score">Очки соперника: <span id="opponentScore">0</span></div>
-  </div>
-  <div id="winnerMessage" style="font-size: 24px; margin-top: 20px;"></div>
-  <script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+    import { getDatabase, ref, update, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
     const firebaseConfig = {
       apiKey: "AIzaSyADQHyaiHrnCzk-IsrgZguP1Sl6eRqo9pc",
       authDomain: "minigames-fb308.firebaseapp.com",
@@ -39,8 +31,9 @@ const demo2pHtml = `<!DOCTYPE html>
       messagingSenderId: "73826070494",
       appId: "1:73826070494:web:23dd86d36861af4190f74f"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
     const roomId = '__ROOM_ID__';
     const userId = '__USER_ID__';
@@ -54,9 +47,9 @@ const demo2pHtml = `<!DOCTYPE html>
       throw new Error('No roomId');
     }
 
-    const sessionRef = db.ref('gameSessions/' + roomId);
-    const myPlayerRef = sessionRef.child('players/' + userId);
-    const gameStateRef = sessionRef.child('gameState');
+    const sessionRef = ref(db, 'gameSessions/' + roomId);
+    const myPlayerRef = ref(db, 'gameSessions/' + roomId + '/players/' + userId);
+    const gameStateRef = ref(db, 'gameSessions/' + roomId + '/gameState');
 
     let myScore = 0;
     let opponentId = null;
@@ -68,9 +61,10 @@ const demo2pHtml = `<!DOCTYPE html>
     const opponentNameSpan = document.getElementById('opponentName');
     const winnerMsg = document.getElementById('winnerMessage');
 
-    myPlayerRef.update({ ready: true, score: 0 });
+    // Отметить игрока готовым
+    update(myPlayerRef, { ready: true, score: 0 });
 
-    sessionRef.on('value', (snapshot) => {
+    onValue(sessionRef, (snapshot) => {
       const session = snapshot.val();
       if (!session) return;
       const players = session.players || {};
@@ -100,14 +94,24 @@ const demo2pHtml = `<!DOCTYPE html>
 
     clickBtn.addEventListener('click', () => {
       if (gameEnded) return;
-      gameStateRef.child(userId).set(myScore + 1);
+      const newScore = myScore + 1;
+      update(ref(db, 'gameSessions/' + roomId + '/gameState/' + userId), newScore);
     });
   </script>
+</head>
+<body>
+  <h1>⚔️ Дуэль кликеров</h1>
+  <p>Комната: <span id="roomId"></span></p>
+  <p>Вы: <span id="playerName"></span></p>
+  <div class="score">Ваши очки: <span id="myScore">0</span></div>
+  <button id="clickBtn">КЛИК!</button>
+  <div class="opponent">
+    <p>Соперник: <span id="opponentName">ожидание...</span></p>
+    <div class="score">Очки соперника: <span id="opponentScore">0</span></div>
+  </div>
+  <div id="winnerMessage" style="font-size: 24px; margin-top: 20px;"></div>
 </body>
 </html>`;
-
-// Data URL для аватарки по умолчанию (фиолетовый градиент с текстом "Game")
-const defaultAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%236C5CE7'/%3E%3Ctext x='50%25' y='55%25' font-family='Arial' font-size='24' fill='white' text-anchor='middle' dy='.3em'%3EGame%3C/text%3E%3C/svg%3E";
 
 export class UIManager {
   constructor() {
@@ -130,7 +134,6 @@ export class UIManager {
   setGameLauncher(launcher) { this.gameLauncher = launcher; }
   setMatchmaker(matchmaker) { this.matchmaker = matchmaker; }
 
-  // ========== UI обновления ==========
   updateUserUI() {
     const user = this.auth?.currentUser;
     const guestBtns = document.getElementById('guest-buttons');
@@ -161,7 +164,6 @@ export class UIManager {
     element.style.boxShadow = skin.glow || 'none';
   }
 
-  // ========== Загрузка игр ==========
   async loadGames(loadMore = false) {
     const grid = document.getElementById('games-grid');
     if (!loadMore) {
@@ -225,7 +227,7 @@ export class UIManager {
 
     grid.innerHTML = games.map(game => {
       const rating = ((game.likes || 0) - (game.dislikes || 0)).toFixed(0);
-      const avatar = game.avatarUrl || defaultAvatar;
+      const avatar = game.avatarUrl || demoAvatarDataURL;
       return `
         <div class="game-card" data-game-id="${game.id}">
           <img class="game-avatar" src="${avatar}" alt="${game.title}" loading="lazy">
@@ -283,29 +285,25 @@ export class UIManager {
 
   async ensureDemoGameExists() {
     const db = window.db;
-    const gamesRef = collection(db, 'games');
-    const q = query(gamesRef, where('id', '==', 'local_demo_2p'));
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) return;
+    const docRef = doc(db, 'games', 'local_demo_2p');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) return;
 
-    // Создаём демо-игру, если её нет
     const demoGame = {
       title: 'Дуэль кликеров (демо)',
       players: 2,
       authorNickname: 'BIBLIX',
       authorUid: 'system',
-      avatarUrl: defaultAvatar,
+      avatarUrl: demoAvatarDataURL,
       htmlContent: demo2pHtml,
       likes: 0,
       dislikes: 0,
       createdAt: new Date(),
       id: 'local_demo_2p'
     };
-    const docRef = doc(db, 'games', 'local_demo_2p');
     await setDoc(docRef, demoGame);
   }
 
-  // ========== Модальные окна ==========
   closeAllModals() {
     document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
   }
@@ -321,7 +319,6 @@ export class UIManager {
     document.getElementById('game-iframe').src = '';
   }
 
-  // ========== Toast ==========
   showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -332,9 +329,8 @@ export class UIManager {
     setTimeout(() => toast.remove(), 3000);
   }
 
-  // ========== Привязка событий ==========
   bindEvents() {
-    // Кнопки гостя
+    // Гость
     document.getElementById('login-btn').addEventListener('click', () => this.openAuthModal('login'));
     document.getElementById('register-btn').addEventListener('click', () => this.openAuthModal('register'));
     document.getElementById('switch-to-register').addEventListener('click', (e) => {
@@ -345,7 +341,7 @@ export class UIManager {
       btn.addEventListener('click', () => this.closeAllModals());
     });
 
-    // Форма авторизации
+    // Авторизация
     document.getElementById('auth-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const nickname = document.getElementById('auth-nickname').value.trim();
@@ -364,7 +360,7 @@ export class UIManager {
       }
     });
 
-    // Пользовательская панель
+    // Панель пользователя
     document.getElementById('logout-btn').addEventListener('click', () => this.auth.logout());
     document.getElementById('shop-btn').addEventListener('click', () => {
       this.shop.renderShop();
@@ -439,7 +435,6 @@ export class UIManager {
       this.renderGames(this.filterGames(this.gamesCache));
     });
 
-    // Закрытие контейнера игры
     document.getElementById('close-game-btn').addEventListener('click', () => this.hideGameContainer());
 
     // Рейтинг
@@ -456,7 +451,7 @@ export class UIManager {
       this.showToast('Спасибо за оценку!', 'success');
     });
 
-    // Бесконечный скролл (упрощённо)
+    // Бесконечный скролл
     window.addEventListener('scroll', () => {
       if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 500) {
         this.loadGames(true);
