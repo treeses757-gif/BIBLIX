@@ -23,7 +23,8 @@ export class Matchmaker {
     this.showMatchmakingModal();
     this.startTimer();
 
-    const queueRef = ref(this.rtdb, `matchmaking/${game.id}/queue/${user.id}`);
+    const userId = user.nickname_lower || user.id;
+    const queueRef = ref(this.rtdb, `matchmaking/${game.id}/queue/${userId}`);
     set(queueRef, {
       nickname: user.nickname,
       timestamp: serverTimestamp()
@@ -74,6 +75,7 @@ export class Matchmaker {
   waitForGameStart(roomId, game) {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const user = this.auth.currentUser;
+    const userId = user.nickname_lower || user.id;
 
     onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
@@ -93,11 +95,10 @@ export class Matchmaker {
     const iframeEl = document.getElementById('game-iframe');
     document.getElementById('game-title-display').textContent = game.title;
 
-    // Для демо-игры 2 игроков – подстановка параметров
     if (game.id === 'local_demo_2p' && game.htmlContent) {
       let finalHtml = game.htmlContent;
       finalHtml = finalHtml.replace(/__ROOM_ID__/g, roomId);
-      finalHtml = finalHtml.replace(/__USER_ID__/g, user.id);
+      finalHtml = finalHtml.replace(/__USER_ID__/g, userId);
       finalHtml = finalHtml.replace(/__NICKNAME__/g, user.nickname);
 
       const blob = new Blob([finalHtml], { type: 'text/html' });
@@ -105,7 +106,7 @@ export class Matchmaker {
       iframeEl.src = blobUrl;
       iframeEl.onload = () => {
         URL.revokeObjectURL(blobUrl);
-        update(child(sessionRef, `players/${user.id}`), { ready: true });
+        update(child(sessionRef, `players/${userId}`), { ready: true });
       };
     } else {
       const url = this.gameLauncher.getGameUrl(game);
@@ -113,7 +114,7 @@ export class Matchmaker {
         iframeEl.src = url;
         iframeEl.onload = () => {
           if (game.htmlContent) URL.revokeObjectURL(url);
-          update(child(sessionRef, `players/${user.id}`), { ready: true });
+          update(child(sessionRef, `players/${userId}`), { ready: true });
         };
       } else {
         this.ui.showToast('Не удалось загрузить игру', 'error');
@@ -130,7 +131,8 @@ export class Matchmaker {
     if (this.unsubscribeQueue) this.unsubscribeQueue();
     if (this.currentGame) {
       const user = this.auth.currentUser;
-      remove(ref(this.rtdb, `matchmaking/${this.currentGame.id}/queue/${user.id}`));
+      const userId = user.nickname_lower || user.id;
+      remove(ref(this.rtdb, `matchmaking/${this.currentGame.id}/queue/${userId}`));
     }
     this.hideMatchmakingModal();
     this.stopTimer();
