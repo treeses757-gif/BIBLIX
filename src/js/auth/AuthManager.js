@@ -46,7 +46,7 @@ export class AuthManager {
     await setDoc(userRef, userData);
     
     // Авто-вход
-    this.currentUser = { nickname, ...userData };
+    this.currentUser = { nickname, ...userData, id: lowerNick };
     localStorage.setItem('biblix_session', JSON.stringify({ nickname, hash }));
     this.ui.updateUserUI();
     this.ui.showToast('Регистрация успешна!', 'success');
@@ -66,7 +66,7 @@ export class AuthManager {
       throw new Error('Неверный ник или пароль');
     }
     
-    this.currentUser = { nickname: userData.nickname, ...userData, id: docSnap.id };
+    this.currentUser = { nickname: userData.nickname, ...userData, id: lowerNick };
     localStorage.setItem('biblix_session', JSON.stringify({ nickname: userData.nickname, hash }));
     this.ui.updateUserUI();
     this.ui.showToast(`Добро пожаловать, ${userData.nickname}!`, 'success');
@@ -83,8 +83,8 @@ export class AuthManager {
       const docSnap = await getDoc(userRef);
       if (docSnap.exists()) {
         const userData = docSnap.data();
-        // Проверка по хэшу (упрощённо, можно просто доверять)
-        this.currentUser = { nickname, ...userData, id: docSnap.id };
+        // Проверка по хэшу (доверительная, но можно сверить)
+        this.currentUser = { nickname, ...userData, id: lowerNick };
         this.ui.updateUserUI();
       } else {
         localStorage.removeItem('biblix_session');
