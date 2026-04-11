@@ -1,6 +1,6 @@
 // ========== FILE: src/js/ui/UIManager.js ==========
 import { 
-  collection, query, orderBy, limit, getDocs, where, startAfter, doc, getDoc, updateDoc, increment 
+  collection, query, orderBy, limit, getDocs, where, startAfter, doc, getDoc, setDoc, updateDoc, increment 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 // Демо-игра 2 игроков (встроенная)
@@ -329,7 +329,7 @@ export class UIManager {
     setTimeout(() => toast.remove(), 3000);
   }
 
-  // ========== Привязка событий (вызывается из main.js после DOMContentLoaded) ==========
+  // ========== Привязка событий ==========
   bindEvents() {
     // Кнопки гостя
     document.getElementById('login-btn').addEventListener('click', () => this.openAuthModal('login'));
