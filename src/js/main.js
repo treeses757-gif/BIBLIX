@@ -1,7 +1,8 @@
-// ========== FILE: src/js/main.js ==========
+// ========== FILE: src/js/main.js (исправлен) ==========
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 import { UIManager } from "./ui/UIManager.js";
@@ -15,24 +16,30 @@ import { Matchmaker } from "./matchmaking/Matchmaker.js";
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const rtdb = getDatabase(app);
+const auth = getAuth(app);
+
+// Анонимный вход для работы с Realtime Database
+signInAnonymously(auth).catch(error => {
+  console.warn('RTDB anonymous auth failed, multiplayer may not work:', error);
+});
 
 window.db = db;
 window.rtdb = rtdb;
 
 const ui = new UIManager();
-const auth = new AuthManager(db);
-const shop = new ShopManager(db, auth);
-const upload = new UploadManager(db, null, auth);
-const gameLauncher = new GameLauncher(db, rtdb, auth);
-const matchmaker = new Matchmaker(rtdb, db, auth, gameLauncher);
-const userGameController = new UserGameController(rtdb, auth);
+const authManager = new AuthManager(db);
+const shop = new ShopManager(db, authManager);
+const upload = new UploadManager(db, null, authManager);
+const gameLauncher = new GameLauncher(db, rtdb, authManager);
+const matchmaker = new Matchmaker(rtdb, db, authManager, gameLauncher);
+const userGameController = new UserGameController(rtdb, authManager);
 
-ui.setAuthManager(auth);
+ui.setAuthManager(authManager);
 ui.setShopManager(shop);
 ui.setUploadManager(upload);
 ui.setGameLauncher(gameLauncher);
 ui.setMatchmaker(matchmaker);
-auth.setUI(ui);
+authManager.setUI(ui);
 shop.setUI(ui);
 upload.setUI(ui);
 gameLauncher.setUI(ui);
@@ -42,7 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initStarfield();
   feather.replace();
   ui.initEventListeners();
-  await auth.checkAutoLogin();
+  await authManager.checkAutoLogin();
   await ui.loadGames();
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
@@ -97,4 +104,4 @@ function toggleFullscreen() {
   }
 }
 
-window.BIBLIX = { ui, auth, shop, upload, gameLauncher, matchmaker, userGameController };
+window.BIBLIX = { ui, auth: authManager, shop, upload, gameLauncher, matchmaker, userGameController };
