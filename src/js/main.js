@@ -44,7 +44,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   ui.initEventListeners();
   await auth.checkAutoLogin();
   await ui.loadGames();
-  // ensureDemoGameExists удалён
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
 
