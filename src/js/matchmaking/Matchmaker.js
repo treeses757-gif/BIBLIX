@@ -104,7 +104,6 @@ export class Matchmaker {
           players: session.players
         });
 
-        // Проверка победы для демо‑игры 2p (5 очков)
         if (game.id === 'local_demo_2p') {
           const gameState = session.gameState;
           for (const [uid, score] of Object.entries(gameState)) {
@@ -124,7 +123,6 @@ export class Matchmaker {
     document.getElementById('game-title-display').textContent = game.title;
     this.currentIframe = iframeEl;
 
-    // Исправлено: делаем обработчик асинхронным
     this.iframeMessageHandler = async (event) => {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
