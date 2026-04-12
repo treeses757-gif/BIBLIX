@@ -1,107 +1,106 @@
-// ========== FILE: src/js/main.js (исправлен) ==========
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-import { getDatabase } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
-import { firebaseConfig } from "./firebase-config.js";
+import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-import { UIManager } from "./ui/UIManager.js";
-import { AuthManager } from "./auth/AuthManager.js";
-import { ShopManager } from "./shop/ShopManager.js";
-import { UploadManager } from "./upload/UploadManager.js";
-import { GameLauncher } from "./games/GameLauncher.js";
-import { UserGameController } from "./games/UserGameController.js";
-import { Matchmaker } from "./matchmaking/Matchmaker.js";
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const rtdb = getDatabase(app);
-const auth = getAuth(app);
-
-// Анонимный вход для работы с Realtime Database
-signInAnonymously(auth).catch(error => {
-  console.warn('RTDB anonymous auth failed, multiplayer may not work:', error);
-});
-
-window.db = db;
-window.rtdb = rtdb;
-
-const ui = new UIManager();
-const authManager = new AuthManager(db);
-const shop = new ShopManager(db, authManager);
-const upload = new UploadManager(db, null, authManager);
-const gameLauncher = new GameLauncher(db, rtdb, authManager);
-const matchmaker = new Matchmaker(rtdb, db, authManager, gameLauncher);
-const userGameController = new UserGameController(rtdb, authManager);
-
-ui.setAuthManager(authManager);
-ui.setShopManager(shop);
-ui.setUploadManager(upload);
-ui.setGameLauncher(gameLauncher);
-ui.setMatchmaker(matchmaker);
-authManager.setUI(ui);
-shop.setUI(ui);
-upload.setUI(ui);
-gameLauncher.setUI(ui);
-matchmaker.setUI(ui);
-
-document.addEventListener('DOMContentLoaded', async () => {
-  initStarfield();
-  feather.replace();
-  ui.initEventListeners();
-  await authManager.checkAutoLogin();
-  await ui.loadGames();
-  document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
-});
-
-function initStarfield() {
-  const canvas = document.getElementById('starfield');
-  const ctx = canvas.getContext('2d');
-  let width, height;
-  let stars = [];
-  
-  function resize() {
-    width = window.innerWidth;
-    height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
-    stars = Array.from({ length: 150 }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      size: Math.random() * 2 + 1,
-      speed: Math.random() * 0.2 + 0.05
-    }));
+export class Matchmaker {
+  constructor(rtdb, db, auth, gameLauncher) {
+    this.rtdb = rtdb;
+    this.db = db;
+    this.auth = auth;
+    this.gameLauncher = gameLauncher;
+    this.ui = null;
+    // ... остальные поля ...
   }
-  
-  function draw() {
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    stars.forEach(s => {
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-      ctx.fill();
-      s.y += s.speed;
-      if (s.y > height) {
-        s.y = 0;
-        s.x = Math.random() * width;
+
+  async startMatchmaking(game) {
+    this.currentGame = game;
+    const user = this.auth.currentUser;
+    if (!user) {
+      this.ui.showToast('Войдите в аккаунт', 'error');
+      return;
+    }
+
+    // Убедимся, что у пользователя есть uid (от Firebase Auth)
+    let userId = user.id;
+    if (!userId) {
+      // Если нет, попробуем получить из auth.currentUser
+      const firebaseUser = this.auth.auth.currentUser;
+      userId = firebaseUser ? firebaseUser.uid : null;
+    }
+    if (!userId) {
+      this.ui.showToast('Ошибка идентификации', 'error');
+      return;
+    }
+    this.userId = userId;
+    
+    this.showMatchmakingModal();
+    this.startTimer();
+
+    const queueRef = ref(this.rtdb, `matchmaking/${game.id}/queue/${userId}`);
+    await set(queueRef, {
+      nickname: user.nickname,
+      timestamp: serverTimestamp()
+    });
+
+    const queueListRef = ref(this.rtdb, `matchmaking/${game.id}/queue`);
+    this.unsubscribeQueue = onValue(queueListRef, async (snapshot) => {
+      const queue = snapshot.val() || {};
+      const players = Object.keys(queue);
+      document.getElementById('queue-status').textContent = `В очереди: ${players.length}/${game.players}`;
+
+      if (players.length >= game.players) {
+        const selectedPlayers = players.slice(0, game.players);
+        const roomId = `${game.id}_${Date.now()}`;
+        this.roomId = roomId;
+
+        // Удаляем игроков из очереди
+        const updates = {};
+        selectedPlayers.forEach(pid => updates[`matchmaking/${game.id}/queue/${pid}`] = null);
+        await update(ref(this.rtdb), updates);
+
+        const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
+        const playersObj = {};
+        selectedPlayers.forEach(pid => {
+          playersObj[pid] = { nickname: queue[pid].nickname, ready: false };
+        });
+
+        await set(sessionRef, {
+          gameId: game.id,
+          players: playersObj,
+          host: selectedPlayers[0],
+          status: 'waiting',
+          gameState: {},
+          createdAt: serverTimestamp()
+        });
+
+        if (this.unsubscribeQueue) {
+          this.unsubscribeQueue();
+          this.unsubscribeQueue = null;
+        }
+
+        this.waitForGameStart(roomId, game);
       }
     });
-    requestAnimationFrame(draw);
+
+    document.getElementById('cancel-matchmaking').onclick = () => this.cancelMatchmaking();
   }
+
+  // ... waitForGameStart и другие методы остаются похожими, но нужно использовать this.userId ...
   
-  window.addEventListener('resize', resize);
-  resize();
-  draw();
-}
+  async waitForGameStart(roomId, game) {
+    // ... подписка на сессию ...
+    const user = this.auth.currentUser;
+    const userId = this.userId; // используем сохранённый
 
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen();
-    document.getElementById('fullscreen-btn').textContent = '✕';
-  } else {
-    document.exitFullscreen();
-    document.getElementById('fullscreen-btn').textContent = '⛶';
+    // В sendToIframe нужно передавать правильный userId
+    this.sendToIframe({
+      type: 'init',
+      roomId: roomId,
+      userId: userId,          // теперь это настоящий uid
+      nickname: user.nickname,
+      gameState: sessionData.gameState || {},
+      players: sessionData.players || {}
+    });
+    // ...
   }
-}
 
-window.BIBLIX = { ui, auth: authManager, shop, upload, gameLauncher, matchmaker, userGameController };
+  // ... остальные методы без существенных изменений ...
+}
