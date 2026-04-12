@@ -1,6 +1,6 @@
 // ========== FILE: src/js/ui/UIManager.js ==========
 import { 
-  collection, getDocs, query, orderBy, limit, where, doc, getDoc, updateDoc, increment 
+  collection, getDocs, query, orderBy, limit, where, doc, getDoc, updateDoc, increment, setDoc 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 const demo1pHtml = `<!DOCTYPE html>
@@ -292,9 +292,7 @@ export class UIManager {
     const iframe = document.getElementById('game-iframe');
     iframe.src = 'about:blank';
     container.style.display = 'none';
-    if (this.matchmaker) {
-      this.matchmaker.cleanup();
-    }
+    // Не вызываем cleanup здесь, чтобы не сломать одиночные игры
   }
 
   // ========== Демо‑игры ==========
@@ -303,8 +301,6 @@ export class UIManager {
     const q = query(gamesCol, where('id', '==', 'local_demo_1p'), limit(1));
     const snap = await getDocs(q);
     if (snap.empty) {
-      // В Firestore нельзя задать свой ID при addDoc, поэтому создаём с известным ID через setDoc
-      const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js");
       await setDoc(doc(window.db, 'games', 'local_demo_1p'), {
         title: 'Кликер (демо)',
         players: 1,
@@ -320,7 +316,6 @@ export class UIManager {
     const q2 = query(gamesCol, where('id', '==', 'local_demo_2p'), limit(1));
     const snap2 = await getDocs(q2);
     if (snap2.empty) {
-      const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js");
       await setDoc(doc(window.db, 'games', 'local_demo_2p'), {
         title: 'Дуэль кликеров (демо)',
         players: 2,
@@ -395,7 +390,13 @@ export class UIManager {
     });
 
     // Закрытие игры
-    document.getElementById('close-game-btn').addEventListener('click', () => this.hideGameContainer());
+    document.getElementById('close-game-btn').addEventListener('click', () => {
+      // Если активен мультиплеер, очищаем ресурсы
+      if (this.matchmaker && this.matchmaker.roomId) {
+        this.matchmaker.cleanup();
+      }
+      this.hideGameContainer();
+    });
 
     // Оценка игры
     document.querySelector('#rating-modal .close-modal').addEventListener('click', () => this.closeAllModals());
@@ -407,7 +408,6 @@ export class UIManager {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        // пока только скины
       });
     });
   }
