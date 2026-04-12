@@ -41,10 +41,10 @@ matchmaker.setUI(ui);
 document.addEventListener('DOMContentLoaded', async () => {
   initStarfield();
   feather.replace();
-  ui.initEventListeners(); // ← добавлен вызов
+  ui.initEventListeners();
   await auth.checkAutoLogin();
   await ui.loadGames();
-  await ui.ensureDemoGameExists();
+  // ensureDemoGameExists удалён
   document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
 });
 
