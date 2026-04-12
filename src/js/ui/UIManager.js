@@ -1,6 +1,6 @@
 // ========== FILE: src/js/ui/UIManager.js ==========
 import { 
-  collection, getDocs, query, orderBy, limit, where, doc, getDoc, updateDoc, increment, setDoc 
+  collection, getDocs, query, orderBy, limit, where, doc, setDoc 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 const demo1pHtml = `<!DOCTYPE html>
@@ -143,7 +143,6 @@ export class UIManager {
   setGameLauncher(launcher) { this.gameLauncher = launcher; }
   setMatchmaker(matchmaker) { this.matchmaker = matchmaker; }
 
-  // ========== UI Обновления ==========
   updateUserUI() {
     const user = this.auth?.currentUser;
     const guestDiv = document.getElementById('guest-buttons');
@@ -190,7 +189,6 @@ export class UIManager {
     document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
   }
 
-  // ========== Загрузка игр ==========
   async loadGames() {
     const grid = document.getElementById('games-grid');
     grid.innerHTML = '<div class="loader">Загрузка игр...</div>';
@@ -209,19 +207,16 @@ export class UIManager {
     const grid = document.getElementById('games-grid');
     let filtered = [...this.allGames];
 
-    // Фильтр по количеству игроков
     if (this.currentFilter !== 'all') {
       const playersNeeded = parseInt(this.currentFilter);
       filtered = filtered.filter(g => g.players == playersNeeded);
     }
 
-    // Поиск
     if (this.searchTerm) {
       const term = this.searchTerm.toLowerCase();
       filtered = filtered.filter(g => g.title.toLowerCase().includes(term) || g.authorNickname?.toLowerCase().includes(term));
     }
 
-    // Сортировка
     if (this.currentSort === 'popular') {
       filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0));
     } else {
@@ -292,10 +287,8 @@ export class UIManager {
     const iframe = document.getElementById('game-iframe');
     iframe.src = 'about:blank';
     container.style.display = 'none';
-    // Не вызываем cleanup здесь, чтобы не сломать одиночные игры
   }
 
-  // ========== Демо‑игры ==========
   async ensureDemoGameExists() {
     const gamesCol = collection(window.db, 'games');
     const q = query(gamesCol, where('id', '==', 'local_demo_1p'), limit(1));
@@ -330,9 +323,7 @@ export class UIManager {
     }
   }
 
-  // ========== Инициализация обработчиков событий ==========
   initEventListeners() {
-    // Кнопки авторизации
     document.getElementById('login-btn').addEventListener('click', () => this.showAuthModal('login'));
     document.getElementById('register-btn').addEventListener('click', () => this.showAuthModal('register'));
     document.getElementById('logout-btn').addEventListener('click', () => this.auth.logout());
@@ -343,7 +334,6 @@ export class UIManager {
     document.querySelector('#auth-modal .close-modal').addEventListener('click', () => this.closeAllModals());
     document.getElementById('auth-form').addEventListener('submit', (e) => this.handleAuthSubmit(e));
 
-    // Создание игры
     document.getElementById('create-game-btn').addEventListener('click', () => {
       if (!this.auth.currentUser) return this.showToast('Войдите', 'error');
       document.getElementById('create-modal').style.display = 'flex';
@@ -358,7 +348,6 @@ export class UIManager {
     });
     document.getElementById('game-title').addEventListener('input', () => this.validateCreateForm());
 
-    // Магазин и инвентарь
     document.getElementById('shop-btn').addEventListener('click', () => {
       this.shop.renderShop();
       document.getElementById('shop-modal').style.display = 'flex';
@@ -371,7 +360,6 @@ export class UIManager {
       btn.addEventListener('click', () => this.closeAllModals())
     );
 
-    // Фильтры
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -389,21 +377,17 @@ export class UIManager {
       this.renderGames();
     });
 
-    // Закрытие игры
     document.getElementById('close-game-btn').addEventListener('click', () => {
-      // Если активен мультиплеер, очищаем ресурсы
       if (this.matchmaker && this.matchmaker.roomId) {
         this.matchmaker.cleanup();
       }
       this.hideGameContainer();
     });
 
-    // Оценка игры
     document.querySelector('#rating-modal .close-modal').addEventListener('click', () => this.closeAllModals());
     document.getElementById('rate-like').addEventListener('click', () => this.submitRating(1));
     document.getElementById('rate-dislike').addEventListener('click', () => this.submitRating(-1));
 
-    // Вкладки магазина
     document.querySelectorAll('.shop-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
