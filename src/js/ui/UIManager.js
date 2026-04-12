@@ -42,8 +42,8 @@ const demo2pHtml = `<!DOCTYPE html>
 </head>
 <body>
   <h1>⚔️ Дуэль кликеров</h1>
-  <p>Комната: <span id="roomIdDisplay"></span></p>
-  <p>Вы: <span id="playerName"></span></p>
+  <p>Комната: <span id="roomIdDisplay">—</span></p>
+  <p>Вы: <span id="playerName">—</span></p>
   <div class="score">Ваши очки: <span id="myScore">0</span></div>
   <button id="clickBtn">КЛИК!</button>
   <div class="opponent">
@@ -58,6 +58,8 @@ const demo2pHtml = `<!DOCTYPE html>
       let nickname = '';
       let opponentId = null;
       let gameEnded = false;
+      let myScore = 0;
+      let opponentScore = 0;
 
       const roomIdSpan = document.getElementById('roomIdDisplay');
       const playerNameSpan = document.getElementById('playerName');
@@ -101,22 +103,26 @@ const demo2pHtml = `<!DOCTYPE html>
         opponentId = ids.find(id => id !== userId);
         if (opponentId) {
           opponentNameSpan.textContent = players[opponentId].nickname || 'Соперник';
-          opponentScoreSpan.textContent = gameState[opponentId] || 0;
+          opponentScore = gameState[opponentId] || 0;
+          opponentScoreSpan.textContent = opponentScore;
         } else {
           opponentNameSpan.textContent = 'ожидание...';
         }
-        const myScore = gameState[userId] || 0;
+
+        myScore = gameState[userId] || 0;
         myScoreSpan.textContent = myScore;
       }
 
       clickBtn.addEventListener('click', function() {
         if (gameEnded) return;
+        // Отправляем родителю действие (просто клик)
         window.parent.postMessage({
           type: 'player_action',
           action: 'click'
         }, '*');
       });
 
+      // Сообщаем родителю, что iframe готов
       window.parent.postMessage({ type: 'iframe_ready' }, '*');
     })();
   </script>
