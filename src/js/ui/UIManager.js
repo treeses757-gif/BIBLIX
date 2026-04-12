@@ -1,6 +1,6 @@
 // ========== FILE: src/js/ui/UIManager.js ==========
 import { 
-  collection, getDocs, query, orderBy, limit, where 
+  collection, getDocs, query, orderBy, where 
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 export class UIManager {
@@ -104,7 +104,7 @@ export class UIManager {
     }
 
     if (filtered.length === 0) {
-      grid.innerHTML = '<div class="loader">Игры не найдены</div>';
+      grid.innerHTML = '<div class="loader">Игры не найдены. Нажмите ➕, чтобы создать свою.</div>';
       return;
     }
 
@@ -169,8 +169,6 @@ export class UIManager {
     container.style.display = 'none';
   }
 
-  // Метод удалён — демо-игры больше не создаются автоматически
-
   initEventListeners() {
     document.getElementById('login-btn').addEventListener('click', () => this.showAuthModal('login'));
     document.getElementById('register-btn').addEventListener('click', () => this.showAuthModal('register'));
@@ -183,9 +181,13 @@ export class UIManager {
     document.getElementById('auth-form').addEventListener('submit', (e) => this.handleAuthSubmit(e));
 
     document.getElementById('create-game-btn').addEventListener('click', () => {
-      if (!this.auth.currentUser) return this.showToast('Войдите', 'error');
+      if (!this.auth.currentUser) {
+        this.showToast('Войдите, чтобы создавать игры', 'error');
+        return;
+      }
       document.getElementById('create-modal').style.display = 'flex';
     });
+
     document.querySelector('#create-modal .close-modal').addEventListener('click', () => this.closeAllModals());
     document.getElementById('create-game-form').addEventListener('submit', (e) => this.handleCreateSubmit(e));
     document.getElementById('game-avatar').addEventListener('change', (e) => this.previewAvatar(e));
