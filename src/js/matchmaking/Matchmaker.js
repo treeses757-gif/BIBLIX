@@ -124,19 +124,26 @@ export class Matchmaker {
     document.getElementById('game-title-display').textContent = game.title;
     this.currentIframe = iframeEl;
 
-    this.iframeMessageHandler = (event) => {
+    // Исправлено: делаем обработчик асинхронным
+    this.iframeMessageHandler = async (event) => {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
       
       if (data.type === 'iframe_ready') {
-        this.sendToIframe({
-          type: 'init',
-          roomId: roomId,
-          userId: user.id,
-          nickname: user.nickname,
-          gameState: (await get(sessionRef)).val()?.gameState || {},
-          players: (await get(sessionRef)).val()?.players || {}
-        });
+        try {
+          const sessionSnapshot = await get(sessionRef);
+          const sessionData = sessionSnapshot.val() || {};
+          this.sendToIframe({
+            type: 'init',
+            roomId: roomId,
+            userId: user.id,
+            nickname: user.nickname,
+            gameState: sessionData.gameState || {},
+            players: sessionData.players || {}
+          });
+        } catch (error) {
+          console.error('Failed to get session data:', error);
+        }
       }
       else if (data.type === 'player_action') {
         this.handlePlayerAction(roomId, user.id, data);
