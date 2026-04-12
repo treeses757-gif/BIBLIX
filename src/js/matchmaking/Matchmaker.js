@@ -1,4 +1,4 @@
-import { ref, set, onValue, update, remove, serverTimestamp, child } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
@@ -10,7 +10,11 @@ export class Matchmaker {
     this.currentGame = null;
     this.roomId = null;
     this.unsubscribeQueue = null;
+    this.unsubscribeSession = null;
     this.timerInterval = null;
+    this.iframeMessageHandler = null;
+    this.currentIframe = null;
+    this.userId = null;
   }
 
   setUI(ui) { this.ui = ui; }
@@ -20,6 +24,7 @@ export class Matchmaker {
     const user = this.auth.currentUser;
     if (!user) return;
 
+    this.userId = user.id;
     this.showMatchmakingModal();
     this.startTimer();
 
@@ -46,8 +51,10 @@ export class Matchmaker {
 
         const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
         const playersObj = {};
+        const initialGameState = {};
         selectedPlayers.forEach(pid => {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: false };
+          initialGameState[pid] = 0;
         });
 
         await set(sessionRef, {
@@ -55,7 +62,7 @@ export class Matchmaker {
           players: playersObj,
           host: selectedPlayers[0],
           status: 'waiting',
-          gameState: {},
+          gameState: initialGameState,
           createdAt: serverTimestamp()
         });
 
@@ -74,38 +81,84 @@ export class Matchmaker {
   waitForGameStart(roomId, game) {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const user = this.auth.currentUser;
+    this.userId = user.id;
 
-    onValue(sessionRef, async (snapshot) => {
+    this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
-      if (!session) return;
-      if (session.status === 'playing') return;
+      if (!session) {
+        this.cleanup();
+        return;
+      }
 
       const players = session.players;
-      const allReady = Object.values(players).every(p => p.ready);
-
+      const allReady = Object.values(players).every(p => p.ready === true);
+      
       if (allReady && session.status === 'waiting') {
         await update(sessionRef, { status: 'playing' });
       }
+
+      if (session.status === 'playing' && this.currentIframe) {
+        this.sendToIframe({
+          type: 'state_update',
+          gameState: session.gameState,
+          players: session.players
+        });
+
+        // Проверка победы для демо‑игры 2p (5 очков)
+        if (game.id === 'local_demo_2p') {
+          const gameState = session.gameState;
+          for (const [uid, score] of Object.entries(gameState)) {
+            if (score >= 5) {
+              await this.endGame(roomId, uid);
+              break;
+            }
+          }
+        }
+      }
     });
 
+    this.hideMatchmakingModal();
     this.ui.hideGameContainer();
     const container = document.getElementById('game-container');
     const iframeEl = document.getElementById('game-iframe');
     document.getElementById('game-title-display').textContent = game.title;
+    this.currentIframe = iframeEl;
 
-    // Для демо-игры 2 игроков – подстановка параметров
+    this.iframeMessageHandler = (event) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      
+      if (data.type === 'iframe_ready') {
+        this.sendToIframe({
+          type: 'init',
+          roomId: roomId,
+          userId: user.id,
+          nickname: user.nickname,
+          gameState: (await get(sessionRef)).val()?.gameState || {},
+          players: (await get(sessionRef)).val()?.players || {}
+        });
+      }
+      else if (data.type === 'player_action') {
+        this.handlePlayerAction(roomId, user.id, data);
+      }
+      else if (data.type === 'game_over') {
+        this.endGame(roomId, data.winner);
+      }
+    };
+    window.addEventListener('message', this.iframeMessageHandler);
+
     if (game.id === 'local_demo_2p' && game.htmlContent) {
       let finalHtml = game.htmlContent;
       finalHtml = finalHtml.replace(/__ROOM_ID__/g, roomId);
       finalHtml = finalHtml.replace(/__USER_ID__/g, user.id);
       finalHtml = finalHtml.replace(/__NICKNAME__/g, user.nickname);
-
+      
       const blob = new Blob([finalHtml], { type: 'text/html' });
       const blobUrl = URL.createObjectURL(blob);
       iframeEl.src = blobUrl;
       iframeEl.onload = () => {
         URL.revokeObjectURL(blobUrl);
-        update(child(sessionRef, `players/${user.id}`), { ready: true });
+        update(ref(this.rtdb, `gameSessions/${roomId}/players/${user.id}`), { ready: true });
       };
     } else {
       const url = this.gameLauncher.getGameUrl(game);
@@ -113,17 +166,72 @@ export class Matchmaker {
         iframeEl.src = url;
         iframeEl.onload = () => {
           if (game.htmlContent) URL.revokeObjectURL(url);
-          update(child(sessionRef, `players/${user.id}`), { ready: true });
+          update(ref(this.rtdb, `gameSessions/${roomId}/players/${user.id}`), { ready: true });
         };
       } else {
         this.ui.showToast('Не удалось загрузить игру', 'error');
-        this.hideMatchmakingModal();
+        this.cleanup();
         return;
       }
     }
 
     container.style.display = 'flex';
-    this.hideMatchmakingModal();
+  }
+
+  sendToIframe(data) {
+    if (this.currentIframe && this.currentIframe.contentWindow) {
+      this.currentIframe.contentWindow.postMessage(data, '*');
+    }
+  }
+
+  async handlePlayerAction(roomId, userId, actionData) {
+    if (!roomId || !userId) return;
+    const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+    await runTransaction(scoreRef, (currentScore) => {
+      return (currentScore || 0) + 1;
+    });
+  }
+
+  async endGame(roomId, winnerId) {
+    if (!roomId) return;
+    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
+    const snapshot = await get(sessionRef);
+    if (!snapshot.exists()) return;
+    
+    await update(sessionRef, { status: 'ended', winner: winnerId });
+    
+    this.sendToIframe({
+      type: 'game_over',
+      winner: winnerId
+    });
+    
+    setTimeout(() => {
+      remove(sessionRef);
+    }, 5000);
+    
+    if (winnerId && this.auth.currentUser && winnerId === this.auth.currentUser.id) {
+      await this.auth.addCoins(10);
+      this.ui.showToast('Победа! +10 монет', 'success');
+    }
+  }
+
+  cleanup() {
+    if (this.unsubscribeSession) {
+      this.unsubscribeSession();
+      this.unsubscribeSession = null;
+    }
+    if (this.unsubscribeQueue) {
+      this.unsubscribeQueue();
+      this.unsubscribeQueue = null;
+    }
+    if (this.iframeMessageHandler) {
+      window.removeEventListener('message', this.iframeMessageHandler);
+      this.iframeMessageHandler = null;
+    }
+    this.stopTimer();
+    this.currentGame = null;
+    this.roomId = null;
+    this.currentIframe = null;
   }
 
   cancelMatchmaking() {
@@ -134,6 +242,7 @@ export class Matchmaker {
     }
     this.hideMatchmakingModal();
     this.stopTimer();
+    this.cleanup();
   }
 
   showMatchmakingModal() {
@@ -156,6 +265,9 @@ export class Matchmaker {
   }
 
   stopTimer() {
-    if (this.timerInterval) clearInterval(this.timerInterval);
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
   }
 }
