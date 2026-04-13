@@ -22,10 +22,7 @@ export class Matchmaker {
 
   _getUserId() {
     const user = this.auth.currentUser;
-    if (user) {
-      if (user.uid) return user.uid;
-      if (user.id) return user.id;
-    }
+    if (user) return user.uid || user.id || user.nickname_lower;
     let guestId = localStorage.getItem('biblix_guest_id');
     if (!guestId) {
       guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -36,8 +33,7 @@ export class Matchmaker {
 
   _getNickname() {
     const user = this.auth.currentUser;
-    if (user && user.nickname) return user.nickname;
-    return 'Гость_' + this._getUserId().slice(-4);
+    return user?.nickname || 'Гость_' + this._getUserId().slice(-4);
   }
 
   startMatchmaking(game) {
@@ -49,13 +45,13 @@ export class Matchmaker {
     this.startTimer();
 
     const queueRef = ref(this.rtdb, `matchmaking/${game.id}/queue/${this.userId}`);
-    set(queueRef, { nickname, timestamp: serverTimestamp() });
+    set(queueRef, { nickname, timestamp: serverTimestamp() })
+      .catch(err => { this.ui.showToast('Ошибка подключения', 'error'); this.cancelMatchmaking(); });
 
     const queueListRef = ref(this.rtdb, `matchmaking/${game.id}/queue`);
     this.unsubscribeQueue = onValue(queueListRef, async (snapshot) => {
       const queue = snapshot.val() || {};
       const players = Object.keys(queue);
-      
       const statusEl = document.getElementById('queue-status');
       if (statusEl) statusEl.textContent = `В очереди: ${players.length}/${game.players}`;
 
@@ -72,7 +68,7 @@ export class Matchmaker {
         const playersObj = {};
         const initialGameState = {};
         selectedPlayers.forEach(pid => {
-          playersObj[pid] = { nickname: queue[pid].nickname };
+          playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
           initialGameState[pid] = 0;
         });
 
@@ -89,7 +85,6 @@ export class Matchmaker {
           this.unsubscribeQueue();
           this.unsubscribeQueue = null;
         }
-
         this.waitForGameStart(roomId, game);
       }
     });
@@ -140,8 +135,7 @@ export class Matchmaker {
         });
       }
       else if (data.type === 'player_action') {
-        const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${this.userId}`);
-        await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+        this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'game_over') {
         this.endGame(roomId, data.winner);
@@ -158,14 +152,19 @@ export class Matchmaker {
       this.cleanup();
       return;
     }
-
     container.style.display = 'flex';
   }
 
   sendToIframe(data) {
-    if (this.currentIframe && this.currentIframe.contentWindow) {
+    if (this.currentIframe?.contentWindow) {
       this.currentIframe.contentWindow.postMessage(data, '*');
     }
+  }
+
+  async handlePlayerAction(roomId, userId) {
+    if (!roomId || !userId) return;
+    const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+    await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
   }
 
   async endGame(roomId, winnerId) {
@@ -174,7 +173,7 @@ export class Matchmaker {
     await update(sessionRef, { status: 'ended', winner: winnerId });
     this.sendToIframe({ type: 'game_over', winner: winnerId });
     setTimeout(() => remove(sessionRef), 5000);
-    if (winnerId && this.auth.currentUser && winnerId === this.userId) {
+    if (winnerId === this.userId) {
       await this.auth.addCoins(10);
       this.ui.showToast('Победа! +10 монет', 'success');
     }
@@ -211,9 +210,9 @@ export class Matchmaker {
     const timerEl = document.getElementById('matchmaking-timer');
     this.timerInterval = setInterval(() => {
       seconds++;
-      const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-      const secs = (seconds % 60).toString().padStart(2, '0');
-      timerEl.textContent = `${mins}:${secs}`;
+      const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+      const s = (seconds % 60).toString().padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
     }, 1000);
   }
 
