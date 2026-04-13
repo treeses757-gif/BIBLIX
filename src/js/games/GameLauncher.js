@@ -21,7 +21,7 @@ export class GameLauncher {
       const blob = new Blob([game.htmlContent], { type: 'text/html' });
       return URL.createObjectURL(blob);
     }
-    // 3. Внешний URL (если есть)
+    // 3. Внешний URL
     if (game.htmlUrl) {
       return game.htmlUrl;
     }
@@ -47,7 +47,6 @@ export class GameLauncher {
     };
     container.style.display = 'flex';
 
-    // Награда автору (если есть)
     this.rewardAuthor(game);
   }
 
