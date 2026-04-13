@@ -1,4 +1,4 @@
-// src/js/matchmaking/Matchmaker.js
+// src/js/matchmaking/Matchmaker.js (debug version)
 import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
@@ -20,16 +20,12 @@ export class Matchmaker {
 
   setUI(ui) { this.ui = ui; }
 
-  // Получение стабильного ID игрока
   _getUserId() {
     const user = this.auth.currentUser;
     if (user) {
-      // Если есть UID из Firebase Auth (приоритет)
       if (user.uid) return user.uid;
-      // Иначе используем ID из Firestore (если есть)
       if (user.id) return user.id;
     }
-    // Гостевой ID из localStorage
     let guestId = localStorage.getItem('biblix_guest_id');
     if (!guestId) {
       guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -54,17 +50,9 @@ export class Matchmaker {
     this.startTimer();
 
     const queueRef = ref(this.rtdb, `matchmaking/${game.id}/queue/${this.userId}`);
-    set(queueRef, {
-      nickname: nickname,
-      timestamp: serverTimestamp()
-    }).then(() => {
-      console.log('[MM] Added to queue');
-    }).catch(err => {
-      console.error('[MM] Error adding to queue:', err);
-      this.ui.showToast('Ошибка подключения', 'error');
-      this.cancelMatchmaking();
-      return;
-    });
+    set(queueRef, { nickname, timestamp: serverTimestamp() })
+      .then(() => console.log('[MM] Added to queue'))
+      .catch(err => { console.error('[MM] Error adding to queue:', err); this.ui.showToast('Ошибка подключения', 'error'); this.cancelMatchmaking(); });
 
     const queueListRef = ref(this.rtdb, `matchmaking/${game.id}/queue`);
     this.unsubscribeQueue = onValue(queueListRef, async (snapshot) => {
@@ -80,7 +68,6 @@ export class Matchmaker {
         const roomId = `${game.id}_${Date.now()}`;
         this.roomId = roomId;
 
-        // Удаляем из очереди
         const updates = {};
         selectedPlayers.forEach(pid => updates[`matchmaking/${game.id}/queue/${pid}`] = null);
         await update(ref(this.rtdb), updates);
@@ -101,6 +88,7 @@ export class Matchmaker {
           gameState: initialGameState,
           createdAt: serverTimestamp()
         });
+        console.log('[MM] Session created:', roomId);
 
         if (this.unsubscribeQueue) {
           this.unsubscribeQueue();
@@ -120,26 +108,19 @@ export class Matchmaker {
 
     this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
-      if (!session) {
-        this.cleanup();
-        return;
-      }
+      console.log('[MM] Session update:', session);
+      if (!session) { this.cleanup(); return; }
 
-      const players = session.players;
-      const allReady = Object.values(players).every(p => p.ready === true);
-      
-      if (allReady && session.status === 'waiting') {
+      // Автоматически переводим в playing, если оба игрока есть (упрощённо)
+      if (session.status === 'waiting' && Object.keys(session.players).length >= game.players) {
         await update(sessionRef, { status: 'playing' });
+        console.log('[MM] Status changed to playing');
       }
 
       if (session.status === 'playing' && this.currentIframe) {
-        this.sendToIframe({
-          type: 'state_update',
-          gameState: session.gameState,
-          players: session.players
-        });
+        console.log('[MM] Sending state_update to iframe', session.gameState);
+        this.sendToIframe({ type: 'state_update', gameState: session.gameState, players: session.players });
 
-        // Проверка победы (любой игрок набрал 5 очков)
         const gameState = session.gameState;
         for (const [uid, score] of Object.entries(gameState)) {
           if (score >= 5) {
@@ -161,16 +142,14 @@ export class Matchmaker {
     this.iframeMessageHandler = async (event) => {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
-      
+      console.log('[MM] Message from iframe:', data.type, data);
+
       if (data.type === 'iframe_ready') {
-        console.log('[MM] iframe ready');
         const sessionSnapshot = await get(sessionRef);
         const sessionData = sessionSnapshot.val() || {};
         this.sendToIframe({
           type: 'init',
-          roomId: roomId,
-          userId: this.userId,
-          nickname: nickname,
+          roomId, userId: this.userId, nickname,
           gameState: sessionData.gameState || {},
           players: sessionData.players || {}
         });
@@ -179,19 +158,18 @@ export class Matchmaker {
         this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'game_over') {
-        console.log('[MM] game_over from iframe, winner:', data.winner);
         this.endGame(roomId, data.winner);
       }
     };
     window.addEventListener('message', this.iframeMessageHandler);
 
-    // Загрузка iframe
     const url = this.gameLauncher.getGameUrl(game);
     if (url) {
       iframeEl.src = url;
       iframeEl.onload = () => {
+        console.log('[MM] Iframe loaded');
         if (game.htmlContent) URL.revokeObjectURL(url);
-        update(ref(this.rtdb, `gameSessions/${roomId}/players/${this.userId}`), { ready: true });
+        // Не обязательно ждать ready, можно сразу отправлять init (уже отправлен при iframe_ready)
       };
     } else {
       this.ui.showToast('Не удалось загрузить игру', 'error');
@@ -204,34 +182,26 @@ export class Matchmaker {
 
   sendToIframe(data) {
     if (this.currentIframe && this.currentIframe.contentWindow) {
+      console.log('[MM] Sending to iframe:', data.type);
       this.currentIframe.contentWindow.postMessage(data, '*');
+    } else {
+      console.warn('[MM] No iframe to send to');
     }
   }
 
   async handlePlayerAction(roomId, userId, actionData) {
     if (!roomId || !userId) return;
     const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
-    await runTransaction(scoreRef, (currentScore) => {
-      return (currentScore || 0) + 1;
-    });
+    await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
     console.log('[MM] Score incremented for', userId);
   }
 
   async endGame(roomId, winnerId) {
     if (!roomId) return;
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
-    const snapshot = await get(sessionRef);
-    if (!snapshot.exists()) return;
-    
     await update(sessionRef, { status: 'ended', winner: winnerId });
-    
-    this.sendToIframe({
-      type: 'game_over',
-      winner: winnerId
-    });
-    
+    this.sendToIframe({ type: 'game_over', winner: winnerId });
     setTimeout(() => remove(sessionRef), 5000);
-    
     if (winnerId && this.auth.currentUser && winnerId === this.userId) {
       await this.auth.addCoins(10);
       this.ui.showToast('Победа! +10 монет', 'success');
@@ -276,9 +246,7 @@ export class Matchmaker {
   }
 
   stopTimer() {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    this.timerInterval = null;
   }
 }
