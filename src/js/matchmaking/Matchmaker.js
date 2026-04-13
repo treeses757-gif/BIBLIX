@@ -1,4 +1,4 @@
-// src/js/matchmaking/Matchmaker.js (debug version)
+// src/js/matchmaking/Matchmaker.js (чистая версия без дублирования init)
 import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
@@ -76,7 +76,7 @@ export class Matchmaker {
         const playersObj = {};
         const initialGameState = {};
         selectedPlayers.forEach(pid => {
-          playersObj[pid] = { nickname: queue[pid].nickname, ready: false };
+          playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
           initialGameState[pid] = 0;
         });
 
@@ -84,11 +84,11 @@ export class Matchmaker {
           gameId: game.id,
           players: playersObj,
           host: selectedPlayers[0],
-          status: 'waiting',
+          status: 'playing',  // сразу играем
           gameState: initialGameState,
           createdAt: serverTimestamp()
         });
-        console.log('[MM] Session created:', roomId);
+        console.log('[MM] Session created and set to playing:', roomId);
 
         if (this.unsubscribeQueue) {
           this.unsubscribeQueue();
@@ -110,12 +110,6 @@ export class Matchmaker {
       const session = snapshot.val();
       console.log('[MM] Session update:', session);
       if (!session) { this.cleanup(); return; }
-
-      // Автоматически переводим в playing, если оба игрока есть (упрощённо)
-      if (session.status === 'waiting' && Object.keys(session.players).length >= game.players) {
-        await update(sessionRef, { status: 'playing' });
-        console.log('[MM] Status changed to playing');
-      }
 
       if (session.status === 'playing' && this.currentIframe) {
         console.log('[MM] Sending state_update to iframe', session.gameState);
@@ -169,8 +163,9 @@ export class Matchmaker {
       iframeEl.onload = () => {
         console.log('[MM] Iframe loaded');
         if (game.htmlContent) URL.revokeObjectURL(url);
-        // Не обязательно ждать ready, можно сразу отправлять init (уже отправлен при iframe_ready)
+        // Никакой автоматической отправки init — ждём iframe_ready от игры
       };
+      iframeEl.onerror = (e) => console.error('[MM] Iframe error:', e);
     } else {
       this.ui.showToast('Не удалось загрузить игру', 'error');
       this.cleanup();
