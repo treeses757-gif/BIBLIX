@@ -1,4 +1,4 @@
-// src/js/matchmaking/Matchmaker.js (чистая версия без дублирования init)
+// src/js/matchmaking/Matchmaker.js
 import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
@@ -41,7 +41,6 @@ export class Matchmaker {
   }
 
   startMatchmaking(game) {
-    console.log('[MM] startMatchmaking for game:', game.id, game.title);
     this.currentGame = game;
     this.userId = this._getUserId();
     const nickname = this._getNickname();
@@ -50,15 +49,12 @@ export class Matchmaker {
     this.startTimer();
 
     const queueRef = ref(this.rtdb, `matchmaking/${game.id}/queue/${this.userId}`);
-    set(queueRef, { nickname, timestamp: serverTimestamp() })
-      .then(() => console.log('[MM] Added to queue'))
-      .catch(err => { console.error('[MM] Error adding to queue:', err); this.ui.showToast('Ошибка подключения', 'error'); this.cancelMatchmaking(); });
+    set(queueRef, { nickname, timestamp: serverTimestamp() });
 
     const queueListRef = ref(this.rtdb, `matchmaking/${game.id}/queue`);
     this.unsubscribeQueue = onValue(queueListRef, async (snapshot) => {
       const queue = snapshot.val() || {};
       const players = Object.keys(queue);
-      console.log('[MM] Queue update, players:', players.length, players);
       
       const statusEl = document.getElementById('queue-status');
       if (statusEl) statusEl.textContent = `В очереди: ${players.length}/${game.players}`;
@@ -76,7 +72,7 @@ export class Matchmaker {
         const playersObj = {};
         const initialGameState = {};
         selectedPlayers.forEach(pid => {
-          playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
+          playersObj[pid] = { nickname: queue[pid].nickname };
           initialGameState[pid] = 0;
         });
 
@@ -84,11 +80,10 @@ export class Matchmaker {
           gameId: game.id,
           players: playersObj,
           host: selectedPlayers[0],
-          status: 'playing',  // сразу играем
+          status: 'playing',
           gameState: initialGameState,
           createdAt: serverTimestamp()
         });
-        console.log('[MM] Session created and set to playing:', roomId);
 
         if (this.unsubscribeQueue) {
           this.unsubscribeQueue();
@@ -108,17 +103,14 @@ export class Matchmaker {
 
     this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
-      console.log('[MM] Session update:', session);
       if (!session) { this.cleanup(); return; }
 
       if (session.status === 'playing' && this.currentIframe) {
-        console.log('[MM] Sending state_update to iframe', session.gameState);
         this.sendToIframe({ type: 'state_update', gameState: session.gameState, players: session.players });
 
         const gameState = session.gameState;
         for (const [uid, score] of Object.entries(gameState)) {
           if (score >= 5) {
-            console.log('[MM] Winner detected:', uid);
             await this.endGame(roomId, uid);
             break;
           }
@@ -136,7 +128,6 @@ export class Matchmaker {
     this.iframeMessageHandler = async (event) => {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
-      console.log('[MM] Message from iframe:', data.type, data);
 
       if (data.type === 'iframe_ready') {
         const sessionSnapshot = await get(sessionRef);
@@ -149,7 +140,8 @@ export class Matchmaker {
         });
       }
       else if (data.type === 'player_action') {
-        this.handlePlayerAction(roomId, this.userId, data);
+        const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${this.userId}`);
+        await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
       }
       else if (data.type === 'game_over') {
         this.endGame(roomId, data.winner);
@@ -160,12 +152,7 @@ export class Matchmaker {
     const url = this.gameLauncher.getGameUrl(game);
     if (url) {
       iframeEl.src = url;
-      iframeEl.onload = () => {
-        console.log('[MM] Iframe loaded');
-        if (game.htmlContent) URL.revokeObjectURL(url);
-        // Никакой автоматической отправки init — ждём iframe_ready от игры
-      };
-      iframeEl.onerror = (e) => console.error('[MM] Iframe error:', e);
+      iframeEl.onload = () => { if (game.htmlContent) URL.revokeObjectURL(url); };
     } else {
       this.ui.showToast('Не удалось загрузить игру', 'error');
       this.cleanup();
@@ -177,18 +164,8 @@ export class Matchmaker {
 
   sendToIframe(data) {
     if (this.currentIframe && this.currentIframe.contentWindow) {
-      console.log('[MM] Sending to iframe:', data.type);
       this.currentIframe.contentWindow.postMessage(data, '*');
-    } else {
-      console.warn('[MM] No iframe to send to');
     }
-  }
-
-  async handlePlayerAction(roomId, userId, actionData) {
-    if (!roomId || !userId) return;
-    const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
-    await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
-    console.log('[MM] Score incremented for', userId);
   }
 
   async endGame(roomId, winnerId) {
