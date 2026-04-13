@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { background: #1a1a2e; color: white; font-family: Arial; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .panel { background: #16213e; padding: 30px; border-radius: 20px; text-align: center; min-width: 300px; }
+    button { background: #e94560; border: none; color: white; font-size: 24px; padding: 20px 40px; border-radius: 50px; cursor: pointer; margin: 20px 0; }
+    button:disabled { background: #555; }
+    .scores { display: flex; justify-content: space-around; margin: 20px; font-size: 20px; }
+    .winner { font-size: 28px; color: gold; margin-top: 20px; }
+  </style>
+</head>
+<body>
+<div class="panel">
+  <h2>⚡ Кликер-гонка ⚡</h2>
+  <div id="status">Ожидание соперника...</div>
+  <div class="scores">
+    <div>Вы: <span id="myScore">0</span></div>
+    <div>Соперник: <span id="opponentScore">0</span></div>
+  </div>
+  <button id="clickBtn" disabled>КЛИК!</button>
+  <div id="winnerMessage" class="winner"></div>
+</div>
+
+<script>
+  (function() {
+    let roomId = null, userId = null, nickname = '', players = {}, gameState = {}, gameEnded = false;
+    let opponentId = null, opponentNick = 'Соперник';
+    const statusEl = document.getElementById('status');
+    const myScoreEl = document.getElementById('myScore');
+    const oppScoreEl = document.getElementById('opponentScore');
+    const clickBtn = document.getElementById('clickBtn');
+    const winnerMsg = document.getElementById('winnerMessage');
+
+    // Сигнал готовности
+    window.parent.postMessage({ type: 'iframe_ready' }, '*');
+
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      switch (data.type) {
+        case 'init':
+          roomId = data.roomId;
+          userId = data.userId;
+          nickname = data.nickname;
+          players = data.players || {};
+          gameState = data.gameState || {};
+
+          for (let id in players) {
+            if (id !== userId) { opponentId = id; opponentNick = players[id].nickname; }
+          }
+          statusEl.textContent = `Вы: ${nickname}  |  Соперник: ${opponentNick}`;
+          clickBtn.disabled = false;
+          updateScores();
+          break;
+
+        case 'state_update':
+          gameState = data.gameState || {};
+          players = data.players || {};
+          updateScores();
+
+          if (!gameEnded && gameState[userId] >= 5) {
+            gameEnded = true;
+            clickBtn.disabled = true;
+            winnerMsg.textContent = '🏆 Вы победили! 🏆';
+            window.parent.postMessage({ type: 'game_over', winner: userId }, '*');
+          }
+          break;
+
+        case 'game_over':
+          gameEnded = true;
+          clickBtn.disabled = true;
+          const winner = data.winner;
+          if (winner === userId) winnerMsg.textContent = '🏆 Вы победили! 🏆';
+          else winnerMsg.textContent = `😔 Победил ${players[winner]?.nickname || 'соперник'}`;
+          break;
+      }
+    });
+
+    function updateScores() {
+      myScoreEl.textContent = gameState[userId] || 0;
+      if (opponentId) oppScoreEl.textContent = gameState[opponentId] || 0;
+    }
+
+    clickBtn.addEventListener('click', () => {
+      if (gameEnded || !roomId || !userId) return;
+      window.parent.postMessage({ type: 'player_action', action: 'click' }, '*');
+      clickBtn.disabled = true;
+      setTimeout(() => { clickBtn.disabled = false; }, 200);
+    });
+  })();
+</script>
+</body>
+</html>
