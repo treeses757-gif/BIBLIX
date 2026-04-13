@@ -1,3 +1,4 @@
+// src/js/games/GameLauncher.js
 import { doc, updateDoc, increment, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 export class GameLauncher {
@@ -6,27 +7,31 @@ export class GameLauncher {
     this.rtdb = rtdb;
     this.auth = auth;
     this.ui = null;
-    this.lastPlayedGameId = null;
   }
 
   setUI(ui) { this.ui = ui; }
 
   getGameUrl(game) {
+    // 1. Локальный путь (встроенная игра)
+    if (game.localPath) {
+      return game.localPath;
+    }
+    // 2. HTML-контент из Firestore
     if (game.htmlContent) {
       const blob = new Blob([game.htmlContent], { type: 'text/html' });
       return URL.createObjectURL(blob);
-    } else if (game.htmlUrl) {
+    }
+    // 3. Внешний URL (если есть)
+    if (game.htmlUrl) {
       return game.htmlUrl;
     }
     return null;
   }
 
   launchSinglePlayer(game) {
-    this.lastPlayedGameId = game.id;
     const container = document.getElementById('game-container');
     const iframe = document.getElementById('game-iframe');
     const titleDisplay = document.getElementById('game-title-display');
-
     titleDisplay.textContent = game.title;
 
     const url = this.getGameUrl(game);
@@ -42,15 +47,8 @@ export class GameLauncher {
     };
     container.style.display = 'flex';
 
-    window.addEventListener('message', this.handleGameMessage);
+    // Награда автору (если есть)
     this.rewardAuthor(game);
-  }
-
-  handleGameMessage = (event) => {
-    if (event.data && event.data.type === 'game_over') {
-      this.ui.hideGameContainer();
-      window.removeEventListener('message', this.handleGameMessage);
-    }
   }
 
   async rewardAuthor(game) {
