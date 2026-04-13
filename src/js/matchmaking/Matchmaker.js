@@ -1,3 +1,4 @@
+// ========== FILE: src/js/matchmaking/Matchmaker.js ==========
 import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
@@ -98,19 +99,22 @@ export class Matchmaker {
       }
 
       if (session.status === 'playing' && this.currentIframe) {
+        // Отправляем состояние игры в iframe
         this.sendToIframe({
           type: 'state_update',
           gameState: session.gameState,
           players: session.players
         });
 
-        if (game.id === 'local_demo_2p') {
-          const gameState = session.gameState;
-          for (const [uid, score] of Object.entries(gameState)) {
-            if (score >= 5) {
-              await this.endGame(roomId, uid);
-              break;
-            }
+        // === ИСПРАВЛЕНИЕ: убрана привязка к конкретному game.id === 'local_demo_2p' ===
+        // Теперь для любой игры проверяем, не набрал ли кто-то 5 очков (можно изменить лимит)
+        const gameState = session.gameState;
+        const WIN_SCORE = 5; // можно вынести в настройки игры
+        for (const [uid, score] of Object.entries(gameState)) {
+          if (score >= WIN_SCORE) {
+            console.log(`[Matchmaker] Игрок ${uid} набрал ${score} очков, завершаем игру`);
+            await this.endGame(roomId, uid);
+            break;
           }
         }
       }
@@ -128,6 +132,7 @@ export class Matchmaker {
       if (!data || typeof data !== 'object') return;
       
       if (data.type === 'iframe_ready') {
+        console.log('[Matchmaker] iframe сообщил о готовности');
         try {
           const sessionSnapshot = await get(sessionRef);
           const sessionData = sessionSnapshot.val() || {};
@@ -140,19 +145,23 @@ export class Matchmaker {
             players: sessionData.players || {}
           });
         } catch (error) {
-          console.error('Failed to get session data:', error);
+          console.error('[Matchmaker] Ошибка получения данных сессии:', error);
         }
       }
       else if (data.type === 'player_action') {
+        console.log('[Matchmaker] Получено действие от игрока:', data);
         this.handlePlayerAction(roomId, user.id, data);
       }
       else if (data.type === 'game_over') {
+        console.log('[Matchmaker] Игра сообщила о завершении, победитель:', data.winner);
         this.endGame(roomId, data.winner);
       }
     };
     window.addEventListener('message', this.iframeMessageHandler);
 
+    // Загружаем игру в iframe
     if (game.id === 'local_demo_2p' && game.htmlContent) {
+      // Для демо-игры можно оставить подстановку (но это не обязательно)
       let finalHtml = game.htmlContent;
       finalHtml = finalHtml.replace(/__ROOM_ID__/g, roomId);
       finalHtml = finalHtml.replace(/__USER_ID__/g, user.id);
@@ -195,6 +204,7 @@ export class Matchmaker {
     await runTransaction(scoreRef, (currentScore) => {
       return (currentScore || 0) + 1;
     });
+    console.log(`[Matchmaker] Счёт игрока ${userId} увеличен`);
   }
 
   async endGame(roomId, winnerId) {
