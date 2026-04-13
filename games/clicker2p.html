@@ -33,7 +33,6 @@
     const clickBtn = document.getElementById('clickBtn');
     const winnerMsg = document.getElementById('winnerMessage');
 
-    // Сигнал готовности
     window.parent.postMessage({ type: 'iframe_ready' }, '*');
 
     window.addEventListener('message', (event) => {
