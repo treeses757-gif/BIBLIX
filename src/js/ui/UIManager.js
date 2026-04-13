@@ -1,7 +1,7 @@
 // src/js/ui/UIManager.js
 import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
-// Массив встроенных игр (локальные файлы в папке /games/)
+// Встроенные игры (локальные файлы в папке /games/)
 const BUILT_IN_GAMES = [
   {
     id: 'builtin_clicker2p',
@@ -10,7 +10,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: '/games/clicker2p.html',
+    localPath: '/BIBLIX/games/clicker2p.html',   // ← путь для GitHub Pages
     likes: 100,
     dislikes: 0,
     createdAt: new Date()
