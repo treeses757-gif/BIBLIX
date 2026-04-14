@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, orientation=landscape">
+  <title>🟥 Танчики · 2 игрока</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      touch-action: pan-y;
+      position: fixed;
+      width: 100%;
+      height: 100%;
+    }
+    .game-container {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: #2a2a2a;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: auto;
+      touch-action: none;
+    }
+    .ui-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 10;
+      color: white;
+      text-shadow: 2px 2px 0 #000;
+    }
+    .stats {
+      display: flex;
+      gap: 20px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 15px;
+      border-radius: 30px;
+      backdrop-filter: blur(4px);
+    }
+    .player-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .color-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 2px solid #fff;
+    }
+    .touch-controls {
+      position: absolute;
+      bottom: 30px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .joystick-container {
+      width: 110px;
+      height: 110px;
+      background: rgba(30,30,30,0.6);
+      border-radius: 60px;
+      backdrop-filter: blur(4px);
+      border: 2px solid #aaa;
+      position: relative;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    .joystick-thumb {
+      width: 50px;
+      height: 50px;
+      background: #ddd;
+      border-radius: 30px;
+      position: absolute;
+      left: 30px;
+      top: 30px;
+      box-shadow: 0 4px 0 #777;
+      border: 2px solid #fff;
+      transition: transform 0.02s;
+      pointer-events: none;
+    }
+    .fire-btn-touch {
+      width: 90px;
+      height: 90px;
+      background: #8b3a3a;
+      border: 3px solid #ff8888;
+      border-radius: 50px;
+      box-shadow: 0 6px 0 #5a2a2a;
+      color: white;
+      font-size: 2rem;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      touch-action: manipulation;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+      margin-bottom: 10px;
+    }
+    .fire-btn-touch:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #5a2a2a;
+    }
+    .key-hint {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      background: rgba(0,0,0,0.5);
+      padding: 8px 20px;
+      border-radius: 30px;
+      pointer-events: none;
+      z-index: 15;
+    }
+    .message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      color: gold;
+      font-size: 2rem;
+      padding: 20px 40px;
+      border-radius: 20px;
+      border: 3px solid white;
+      z-index: 30;
+      display: none;
+      text-align: center;
+      backdrop-filter: blur(8px);
+    }
+    .orientation-warning {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #000;
+      color: white;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      font-size: 1.5rem;
+      text-align: center;
+      padding: 20px;
+    }
+    @media (orientation: portrait) {
+      .orientation-warning { display: flex; }
+      .game-container { display: none; }
+    }
+    @media (pointer: fine) {
+      .touch-controls { display: none; }
+      .key-hint { display: block; }
+    }
+    @media (pointer: coarse) {
+      .key-hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="orientation-warning">🎮 Пожалуйста, поверните устройство горизонтально</div>
+<div class="game-container">
+  <canvas id="gameCanvas"></canvas>
+  
+  <div class="ui-overlay">
+    <div class="stats" id="statsPanel"></div>
+  </div>
+
+  <div class="key-hint">WASD — движение | Мышь — прицел | Пробел — огонь</div>
+
+  <div class="touch-controls">
+    <div class="joystick-container" id="joystickBase">
+      <div class="joystick-thumb" id="joystickThumb"></div>
+    </div>
+    <div class="fire-btn-touch" id="fireBtnTouch">🔥</div>
+  </div>
+
+  <div class="message" id="messageBox"></div>
+</div>
+
+<script>
+  (function(){
+    "use strict";
+
+    // ---------- НАСТРОЙКИ ----------
+    const TILE_SIZE = 40;
+    const MAP_WIDTH = 31;
+    const MAP_HEIGHT = 21;
+    
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    
+    let cw, ch;
+    let map = [];
+    
+    // Мультиплеерные данные
+    let roomId = null, userId = null, nickname = '';
+    let players = {};
+    let gameState = {};       // серверное состояние: { players: { id: { px, py, angle, lives, ammo } }, map, bullets, winner }
+    let myId = null;
+    let opponentIds = [];
+    
+    // Локальный танк (управляется игроком)
+    let localTank = {
+      px: 0, py: 0, angle: 0,
+      colorIndex: 0, lives: 3, ammo: 5,
+    };
+    
+    // Снаряды (синхронизируются)
+    let bullets = [];
+    
+    // Управление
+    let moveUp = false, moveDown = false, moveLeft = false, moveRight = false;
+    let firePressed = false;
+    let joystickActive = false;
+    let joystickVector = { x: 0, y: 0 };
+    const joystickMaxDist = 35;
+    
+    // Мышь (ПК)
+    let mouseAimActive = false;
+    let mouseWorldX = 0, mouseWorldY = 0;
+    
+    // Камера
+    let camera = { x: 0, y: 0 };
+    const CAMERA_LERP = 0.1;
+    const VIEW_WIDTH = 500;
+    const VIEW_HEIGHT = 400;
+    
+    let gameActive = false;
+    let gameEnded = false;
+    
+    // UI элементы
+    const statsPanel = document.getElementById('statsPanel');
+    const messageBox = document.getElementById('messageBox');
+    const joystickBase = document.getElementById('joystickBase');
+    const joystickThumb = document.getElementById('joystickThumb');
+    const fireBtnTouch = document.getElementById('fireBtnTouch');
+    
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || ('ontouchstart' in window);
+    
+    // ---------- ГЕНЕРАЦИЯ КАРТЫ (одинаковая для всех) ----------
+    function generateMap() {
+      map = Array(MAP_HEIGHT).fill().map(() => Array(MAP_WIDTH).fill(0));
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        map[0][x] = 1;
+        map[MAP_HEIGHT-1][x] = 1;
+      }
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        map[y][0] = 1;
+        map[y][MAP_WIDTH-1] = 1;
+      }
+      const brickCount = 80 + Math.floor(Math.random() * 60);
+      for (let i = 0; i < brickCount; i++) {
+        const x = Math.floor(Math.random() * (MAP_WIDTH - 2)) + 1;
+        const y = Math.floor(Math.random() * (MAP_HEIGHT - 2)) + 1;
+        if ((x === 4 && y === 4) || (x === 5 && y === 4) || (x === 4 && y === 5)) continue;
+        if ((x === MAP_WIDTH-5 && y === MAP_HEIGHT-5) || (x === MAP_WIDTH-6 && y === MAP_HEIGHT-5)) continue;
+        map[y][x] = 1;
+      }
+      // Очистка стартовых зон (для 2 игроков)
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          let nx = 4 + dx, ny = 4 + dy;
+          if (nx >= 1 && nx < MAP_WIDTH-1 && ny >= 1 && ny < MAP_HEIGHT-1) map[ny][nx] = 0;
+          nx = MAP_WIDTH-5 + dx; ny = MAP_HEIGHT-5 + dy;
+          if (nx >= 1 && nx < MAP_WIDTH-1 && ny >= 1 && ny < MAP_HEIGHT-1) map[ny][nx] = 0;
+        }
+      }
+      return map;
+    }
+    
+    // ---------- ВЗАИМОДЕЙСТВИЕ С BIBLIX ----------
+    function postMessage(type, data = {}) {
+      window.parent.postMessage({ type, ...data }, '*');
+    }
+    
+    window.addEventListener('message', (e) => {
+      const data = e.data;
+      if (!data || typeof data !== 'object') return;
+      
+      switch (data.type) {
+        case 'init':
+          roomId = data.roomId;
+          userId = data.userId;
+          nickname = data.nickname;
+          players = data.players || {};
+          gameState = data.gameState || {};
+          
+          myId = userId;
+          opponentIds = Object.keys(players).filter(id => id !== myId);
+          
+          // Если карта ещё не создана (первый игрок)
+          if (!gameState.map) {
+            gameState.map = generateMap();
+            gameState.players = {};
+            gameState.bullets = [];
+            // Инициализация танков
+            Object.keys(players).forEach((id, idx) => {
+              let startX, startY;
+              if (idx === 0) { startX = 4 * TILE_SIZE + TILE_SIZE/2; startY = 4 * TILE_SIZE + TILE_SIZE/2; }
+              else { startX = (MAP_WIDTH-5) * TILE_SIZE + TILE_SIZE/2; startY = (MAP_HEIGHT-5) * TILE_SIZE + TILE_SIZE/2; }
+              gameState.players[id] = {
+                px: startX, py: startY, angle: 0,
+                lives: 3, ammo: 5, colorIndex: idx
+              };
+            });
+            postMessage('state_update', { gameState });
+          }
+          
+          map = gameState.map;
+          bullets = gameState.bullets || [];
+          updateLocalFromState();
+          gameActive = true;
+          updateUI();
+          break;
+          
+        case 'state_update':
+          gameState = data.gameState || {};
+          map = gameState.map;
+          bullets = gameState.bullets || [];
+          updateLocalFromState();
+          if (gameState.winner) {
+            gameEnded = true;
+            gameActive = false;
+            messageBox.style.display = 'block';
+            messageBox.textContent = gameState.winner === myId ? '🏆 Вы победили!' : `😔 Победил ${players[gameState.winner]?.nickname}`;
+          }
+          updateUI();
+          break;
+          
+        case 'game_over':
+          gameEnded = true;
+          gameActive = false;
+          messageBox.style.display = 'block';
+          messageBox.textContent = data.winner === myId ? '🏆 Вы победили!' : `😔 Победил ${players[data.winner]?.nickname}`;
+          break;
+      }
+    });
+    
+    function updateLocalFromState() {
+      if (gameState.players && gameState.players[myId]) {
+        Object.assign(localTank, gameState.players[myId]);
+      }
+      camera.x = localTank.px;
+      camera.y = localTank.py;
+    }
+    
+    function updateUI() {
+      let html = '';
+      for (let id in players) {
+        const p = players[id];
+        const state = gameState.players?.[id] || {};
+        const color = ['#E74C3C', '#2ECC71', '#F1C40F'][state.colorIndex || 0];
+        html += `<div class="player-info"><span class="color-dot" style="background:${color};"></span>${p.nickname} ❤️${state.lives||0} 🔫${state.ammo||0}</div>`;
+      }
+      statsPanel.innerHTML = html;
+    }
+    
+    // ---------- ОТПРАВКА ДЕЙСТВИЙ ----------
+    function sendMove() {
+      if (!gameActive || gameEnded) return;
+      postMessage('player_action', { action: 'move', px: localTank.px, py: localTank.py, angle: localTank.angle });
+    }
+    
+    function sendShoot() {
+      if (!gameActive || gameEnded) return;
+      postMessage('player_action', { action: 'shoot' });
+    }
+    
+    // ---------- ЛОКАЛЬНОЕ ДВИЖЕНИЕ И СТРЕЛЬБА (с последующей синхронизацией) ----------
+    function tileAtPixel(px, py) {
+      const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE);
+      if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) return 1;
+      return map[ty][tx];
+    }
+    
+    function canMoveTo(px, py) {
+      const half = TILE_SIZE/2 - 2;
+      const corners = [[px-half, py-half], [px+half, py-half], [px-half, py+half], [px+half, py+half]];
+      for (let c of corners) if (tileAtPixel(c[0], c[1]) === 1) return false;
+      // Проверка столкновения с другими танками
+      for (let id in gameState.players) {
+        if (id === myId) continue;
+        const other = gameState.players[id];
+        if (Math.hypot(px - other.px, py - other.py) < TILE_SIZE) return false;
+      }
+      return true;
+    }
+    
+    function updateLocalAngle() {
+      if (!isMobile && mouseAimActive) {
+        const dx = mouseWorldX - localTank.px, dy = mouseWorldY - localTank.py;
+        if (Math.hypot(dx, dy) > 5) localTank.angle = Math.atan2(dy, dx);
+      } else if (joystickActive) {
+        if (Math.hypot(joystickVector.x, joystickVector.y) > 0.2) {
+          localTank.angle = Math.atan2(joystickVector.y, joystickVector.x);
+        }
+      }
+    }
+    
+    function moveLocal() {
+      if (!gameActive || gameEnded) return;
+      let dx = 0, dy = 0;
+      const speed = isMobile ? 1.8 : 2.8;
+      
+      if (joystickActive) {
+        const len = Math.hypot(joystickVector.x, joystickVector.y);
+        if (len > 0.2) {
+          dx = (joystickVector.x / len) * speed;
+          dy = (joystickVector.y / len) * speed;
+        }
+      } else if (!isMobile) {
+        if (moveUp) dy = -speed;
+        if (moveDown) dy = speed;
+        if (moveLeft) dx = -speed;
+        if (moveRight) dx = speed;
+      }
+      
+      if (dx !== 0 || dy !== 0) {
+        let newX = localTank.px + dx, newY = localTank.py + dy;
+        if (canMoveTo(newX, newY)) {
+          localTank.px = newX; localTank.py = newY;
+        } else {
+          if (dx !== 0 && canMoveTo(localTank.px + dx, localTank.py)) localTank.px += dx;
+          if (dy !== 0 && canMoveTo(localTank.px, localTank.py + dy)) localTank.py += dy;
+        }
+        sendMove();
+      }
+    }
+    
+    function shootLocal() {
+      if (!gameActive || gameEnded) return;
+      if (localTank.ammo <= 0) return;
+      sendShoot();
+    }
+    
+    // ---------- КАМЕРА ----------
+    function updateCamera() {
+      camera.x += (localTank.px - camera.x) * CAMERA_LERP;
+      camera.y += (localTank.py - camera.y) * CAMERA_LERP;
+    }
+    
+    // ---------- ОТРИСОВКА ----------
+    function draw() {
+      cw = canvas.width = window.innerWidth;
+      ch = canvas.height = window.innerHeight;
+      
+      const scale = Math.min(cw / VIEW_WIDTH, ch / VIEW_HEIGHT);
+      const camX = camera.x - VIEW_WIDTH/2;
+      const camY = camera.y - VIEW_HEIGHT/2;
+      
+      ctx.save();
+      ctx.translate(cw/2, ch/2);
+      ctx.scale(scale, scale);
+      ctx.translate(-camera.x, -camera.y);
+      
+      ctx.fillStyle = '#1a2a1a';
+      ctx.fillRect(camX, camY, VIEW_WIDTH, VIEW_HEIGHT);
+      
+      // Кирпичи
+      const startX = Math.max(0, Math.floor(camX / TILE_SIZE) - 1);
+      const endX = Math.min(MAP_WIDTH, Math.ceil((camX + VIEW_WIDTH) / TILE_SIZE) + 1);
+      const startY = Math.max(0, Math.floor(camY / TILE_SIZE) - 1);
+      const endY = Math.min(MAP_HEIGHT, Math.ceil((camY + VIEW_HEIGHT) / TILE_SIZE) + 1);
+      
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          if (map[y]?.[x] === 1) {
+            ctx.fillStyle = '#B87C4D';
+            ctx.fillRect(x*TILE_SIZE+1, y*TILE_SIZE+1, TILE_SIZE-2, TILE_SIZE-2);
+            ctx.fillStyle = '#9C5E34';
+            ctx.fillRect(x*TILE_SIZE+3, y*TILE_SIZE+3, TILE_SIZE-6, TILE_SIZE-6);
+            ctx.strokeStyle = '#6B3A1F';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x*TILE_SIZE+2, y*TILE_SIZE+2, TILE_SIZE-4, TILE_SIZE-4);
+          }
+        }
+      }
+      
+      // Танки всех игроков
+      for (let id in gameState.players) {
+        const tank = gameState.players[id];
+        if (!tank) continue;
+        const colors = ['#E74C3C', '#2ECC71', '#F1C40F'];
+        const color = colors[tank.colorIndex] || '#888';
+        
+        ctx.save();
+        ctx.translate(tank.px, tank.py);
+        ctx.rotate(tank.angle);
+        ctx.fillStyle = color;
+        ctx.fillRect(-TILE_SIZE/2, -TILE_SIZE/2, TILE_SIZE, TILE_SIZE);
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-TILE_SIZE/2, TILE_SIZE/2-6, TILE_SIZE, 6);
+        ctx.fillRect(-TILE_SIZE/2, -TILE_SIZE/2, TILE_SIZE, 6);
+        ctx.fillStyle = '#BDC3C7';
+        ctx.beginPath();
+        ctx.arc(0, 0, TILE_SIZE/3, 0, 2*Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#2C3E50';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#7F8C8D';
+        ctx.fillRect(TILE_SIZE/3, -4, 20, 8);
+        ctx.restore();
+        
+        // Никнейм
+        ctx.font = 'bold 12px Arial';
+        ctx.fillStyle = 'white';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 4;
+        ctx.textAlign = 'center';
+        ctx.fillText(players[id]?.nickname || '?', tank.px, tank.py - 30);
+        ctx.shadowBlur = 0;
+      }
+      
+      // Снаряды
+      bullets.forEach(b => {
+        ctx.fillStyle = '#F1C40F';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 5, 0, 2*Math.PI);
+        ctx.fill();
+      });
+      
+      ctx.restore();
+    }
+    
+    // ---------- ОБРАБОТЧИКИ УПРАВЛЕНИЯ ----------
+    // Джойстик
+    function handleJoystickStart(e) {
+      e.preventDefault();
+      joystickActive = true;
+      const rect = joystickBase.getBoundingClientRect();
+      const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      const touch = e.touches[0];
+      updateJoystick(touch.clientX - cx, touch.clientY - cy);
+    }
+    function handleJoystickMove(e) {
+      e.preventDefault();
+      if (!joystickActive) return;
+      const rect = joystickBase.getBoundingClientRect();
+      const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      const touch = e.touches[0];
+      updateJoystick(touch.clientX - cx, touch.clientY - cy);
+    }
+    function handleJoystickEnd(e) {
+      e.preventDefault();
+      joystickActive = false;
+      joystickVector = { x:0, y:0 };
+      joystickThumb.style.transform = 'translate(0px, 0px)';
+    }
+    function updateJoystick(dx, dy) {
+      const dist = Math.hypot(dx, dy);
+      const clamped = Math.min(dist, joystickMaxDist);
+      const angle = Math.atan2(dy, dx);
+      const lx = Math.cos(angle)*clamped, ly = Math.sin(angle)*clamped;
+      joystickThumb.style.transform = `translate(${lx}px, ${ly}px)`;
+      joystickVector = dist > 5 ? { x: dx/joystickMaxDist, y: dy/joystickMaxDist } : { x:0, y:0 };
+    }
+    
+    // Мышь
+    function handleMouseMove(e) {
+      mouseAimActive = true;
+      const rect = canvas.getBoundingClientRect();
+      const canvasX = e.clientX - rect.left, canvasY = e.clientY - rect.top;
+      const scale = Math.min(cw / VIEW_WIDTH, ch / VIEW_HEIGHT);
+      const camX = camera.x - VIEW_WIDTH/2, camY = camera.y - VIEW_HEIGHT/2;
+      mouseWorldX = camX + (canvasX - cw/2) / scale + camera.x;
+      mouseWorldY = camY + (canvasY - ch/2) / scale + camera.y;
+    }
+    function handleMouseLeave() { mouseAimActive = false; }
+    
+    // Клавиатура
+    function keydown(e) {
+      if (!gameActive || gameEnded) return;
+      const k = e.code;
+      if (k === 'KeyW') { moveUp = true; e.preventDefault(); }
+      else if (k === 'KeyS') { moveDown = true; e.preventDefault(); }
+      else if (k === 'KeyA') { moveLeft = true; e.preventDefault(); }
+      else if (k === 'KeyD') { moveRight = true; e.preventDefault(); }
+      else if (k === 'Space') { shootLocal(); e.preventDefault(); }
+    }
+    function keyup(e) {
+      const k = e.code;
+      if (k === 'KeyW') { moveUp = false; e.preventDefault(); }
+      else if (k === 'KeyS') { moveDown = false; e.preventDefault(); }
+      else if (k === 'KeyA') { moveLeft = false; e.preventDefault(); }
+      else if (k === 'KeyD') { moveRight = false; e.preventDefault(); }
+    }
+    
+    window.addEventListener('keydown', keydown);
+    window.addEventListener('keyup', keyup);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+    joystickBase.addEventListener('touchstart', handleJoystickStart, {passive: false});
+    joystickBase.addEventListener('touchmove', handleJoystickMove, {passive: false});
+    joystickBase.addEventListener('touchend', handleJoystickEnd);
+    joystickBase.addEventListener('touchcancel', handleJoystickEnd);
+    fireBtnTouch.addEventListener('touchstart', (e) => { e.preventDefault(); shootLocal(); });
+    fireBtnTouch.addEventListener('mousedown', (e) => { e.preventDefault(); shootLocal(); });
+    canvas.addEventListener('touchstart', (e) => e.preventDefault(), {passive: false});
+    canvas.addEventListener('touchmove', (e) => e.preventDefault(), {passive: false});
+    
+    // Цикл
+    function loop() {
+      if (gameActive && !gameEnded) {
+        updateLocalAngle();
+        moveLocal();
+        updateCamera();
+      }
+      draw();
+      requestAnimationFrame(loop);
+    }
+    
+    // Старт
+    postMessage('iframe_ready');
+    loop();
+  })();
+</script>
+</body>
+</html>
