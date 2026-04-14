@@ -10,7 +10,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: '/BIBLIX/games/clicker2p.html',
+    localPath: 'games/clicker2p.html',   // относительный путь
     likes: 100,
     dislikes: 0,
     createdAt: new Date()
@@ -22,7 +22,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: '/BIBLIX/games/tanks-2p.html',
+    localPath: 'games/tanks-2p.html',
     likes: 150,
     dislikes: 0,
     createdAt: new Date()
@@ -34,7 +34,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: '/BIBLIX/games/tanks-3p.html',
+    localPath: 'games/tanks-3p.html',
     likes: 120,
     dislikes: 0,
     createdAt: new Date()
@@ -205,6 +205,28 @@ export class UIManager {
     } else {
       this.matchmaker.startMatchmaking(game);
     }
+
+    // Фокус на iframe после запуска
+    const container = document.getElementById('game-container');
+    const iframe = document.getElementById('game-iframe');
+
+    const focusIframe = () => {
+      iframe.focus();
+      if (iframe.contentWindow) {
+        iframe.contentWindow.focus();
+      }
+    };
+
+    iframe.addEventListener('load', focusIframe, { once: true });
+    // Если iframe уже загружен (например, при повторном открытии)
+    if (iframe.src && iframe.contentDocument?.readyState === 'complete') {
+      setTimeout(focusIframe, 50);
+    }
+
+    // Убираем фокус при закрытии
+    document.getElementById('close-game-btn').addEventListener('click', () => {
+      iframe.blur();
+    });
   }
 
   showRatingModal(game) {
