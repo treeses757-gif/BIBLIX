@@ -70,11 +70,10 @@ export class Matchmaker {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
         });
 
-        // Начальное состояние: очки (для совместимости) + расширенное для танчиков
         const initialGameState = {
           players: {},
           bullets: [],
-          map: null,  // карта будет сгенерирована на клиенте и отправлена
+          map: null,
           winner: null
         };
 
@@ -107,15 +106,14 @@ export class Matchmaker {
       if (!session) { this.cleanup(); return; }
 
       if (session.status === 'playing' && this.currentIframe) {
-        // Отправляем состояние в iframe
         this.sendToIframe({
           type: 'state_update',
-          gameState: session.gameState,
+          gameState: session.gameState || {},
           players: session.players
         });
 
-        // Проверка победителя
-        if (session.gameState.winner) {
+        // Проверка победителя (безопасно)
+        if (session.gameState && session.gameState.winner) {
           await this.endGame(roomId, session.gameState.winner);
         }
       }
@@ -146,7 +144,6 @@ export class Matchmaker {
         this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'state_update') {
-        // Клиент прислал полное состояние (например, карту) – сохраняем
         if (data.gameState) {
           await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
         }
@@ -177,11 +174,9 @@ export class Matchmaker {
 
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
-    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
 
     if (data.action === 'move') {
-      // Обновляем позицию и угол танка
       const updates = {};
       updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
       updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
@@ -189,13 +184,11 @@ export class Matchmaker {
       await update(ref(this.rtdb), updates);
     }
     else if (data.action === 'shoot') {
-      // Получаем текущее состояние
       const snap = await get(gameStateRef);
       const gameState = snap.val() || { players: {}, bullets: [] };
       const player = gameState.players?.[userId];
       if (!player || player.ammo <= 0) return;
 
-      // Уменьшаем патроны
       const newAmmo = player.ammo - 1;
       const angle = player.angle || 0;
       const barrelLength = 24;
@@ -214,19 +207,14 @@ export class Matchmaker {
 
       const bullets = gameState.bullets || [];
       bullets.push(bullet);
-
-      // Ограничим количество снарядов
       if (bullets.length > 50) bullets.shift();
 
       const updates = {};
       updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
       updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
       await update(ref(this.rtdb), updates);
-
-      // Здесь можно добавить проверку попаданий и разрушение стен – позже
     }
     else if (data.action === 'click') {
-      // Старая механика кликера
       const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
       await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
     }
