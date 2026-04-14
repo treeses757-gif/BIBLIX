@@ -8,7 +8,8 @@
     * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
     body { background:#1a1a1a; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:'Segoe UI',Arial,sans-serif; touch-action:pan-y; position:fixed; width:100%; height:100%; }
     .game-container { width:100%; height:100vh; display:flex; flex-direction:column; position:relative; background:#2a2a2a; }
-    canvas { display:block; width:100%; height:100%; image-rendering:auto; touch-action:none; }
+    canvas { display:block; width:100%; height:100%; image-rendering:auto; touch-action:none; outline: none; }
+    #debug { position:absolute; top:60px; left:10px; color:#0f0; background:rgba(0,0,0,0.7); padding:5px; font-size:12px; z-index:50; max-height:200px; overflow-y:auto; }
     .ui-overlay { position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; pointer-events:none; z-index:10; color:white; text-shadow:2px 2px 0 #000; }
     .stats { display:flex; gap:20px; background:rgba(0,0,0,0.5); padding:5px 15px; border-radius:30px; backdrop-filter:blur(4px); }
     .player-info { display:flex; align-items:center; gap:8px; }
@@ -29,7 +30,7 @@
 <body>
 <div class="orientation-warning">🎮 Пожалуйста, поверните устройство горизонтально</div>
 <div class="game-container">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
   <div class="ui-overlay"><div class="stats" id="statsPanel"></div></div>
   <div class="key-hint">WASD — движение | Мышь — прицел | Пробел — огонь</div>
   <div class="touch-controls">
@@ -37,6 +38,7 @@
     <div class="fire-btn-touch" id="fireBtnTouch">🔥</div>
   </div>
   <div class="message" id="messageBox"></div>
+  <div id="debug">Debug log:</div>
 </div>
 <script>
   (function(){
@@ -56,7 +58,18 @@
     const statsPanel=document.getElementById('statsPanel'), messageBox=document.getElementById('messageBox');
     const joystickBase=document.getElementById('joystickBase'), joystickThumb=document.getElementById('joystickThumb');
     const fireBtnTouch=document.getElementById('fireBtnTouch');
+    const debugEl = document.getElementById('debug');
     const isMobile=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||('ontouchstart' in window);
+
+    function log(msg) { console.log(msg); debugEl.innerHTML += msg + '<br>'; debugEl.scrollTop = debugEl.scrollHeight; }
+
+    // Захват фокуса
+    canvas.focus();
+    canvas.addEventListener('click', () => { canvas.focus(); log('canvas focused'); });
+    canvas.addEventListener('touchstart', () => { canvas.focus(); }, { passive: false });
+    window.addEventListener('load', () => { canvas.focus(); log('window loaded, canvas focused'); });
+    // Также можно фокусировать при движении мыши
+    canvas.addEventListener('mousemove', () => canvas.focus());
 
     function generateMap(){
       let m=Array(MAP_HEIGHT).fill().map(()=>Array(MAP_WIDTH).fill(0));
@@ -76,10 +89,14 @@
       return m;
     }
 
-    function postMessage(type,data={}){ window.parent.postMessage({type,...data},'*'); }
+    function postMessage(type,data={}){ 
+      log(`postMessage: ${type} ${JSON.stringify(data)}`);
+      window.parent.postMessage({type,...data},'*');
+    }
 
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
+      log(`received: ${d.type}`);
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
@@ -97,6 +114,7 @@
           }
           map=gameState.map; bullets=gameState.bullets||[];
           updateLocalFromState(); gameActive=true; updateUI();
+          log('Game active: true');
           break;
         case 'state_update':
           gameState=d.gameState||{}; map=gameState.map; bullets=gameState.bullets||[];
@@ -125,7 +143,12 @@
       statsPanel.innerHTML=html;
     }
 
-    function sendMove(){ if(gameActive&&!gameEnded) postMessage('player_action',{action:'move',px:localTank.px,py:localTank.py,angle:localTank.angle}); }
+    function sendMove(){ 
+      if(gameActive&&!gameEnded) {
+        log(`sendMove: ${localTank.px.toFixed(0)},${localTank.py.toFixed(0)} angle:${localTank.angle.toFixed(2)}`);
+        postMessage('player_action',{action:'move',px:localTank.px,py:localTank.py,angle:localTank.angle});
+      }
+    }
     function sendShoot(){ if(gameActive&&!gameEnded) postMessage('player_action',{action:'shoot'}); }
 
     function tileAtPixel(px,py){
@@ -155,7 +178,12 @@
       if(!gameActive||gameEnded||!map||map.length===0) return;
       let dx=0,dy=0; const speed=isMobile?1.8:2.8;
       if(joystickActive){ const len=Math.hypot(joystickVector.x,joystickVector.y); if(len>0.2){ dx=(joystickVector.x/len)*speed; dy=(joystickVector.y/len)*speed; } }
-      else if(!isMobile){ if(moveUp) dy=-speed; if(moveDown) dy=speed; if(moveLeft) dx=-speed; if(moveRight) dx=speed; }
+      else if(!isMobile){ 
+        if(moveUp) dy=-speed; 
+        if(moveDown) dy=speed; 
+        if(moveLeft) dx=-speed; 
+        if(moveRight) dx=speed; 
+      }
       if(dx!==0||dy!==0){
         let nx=localTank.px+dx, ny=localTank.py+dy;
         if(canMoveTo(nx,ny)){ localTank.px=nx; localTank.py=ny; }
@@ -203,17 +231,48 @@
     function updateJoystick(dx,dy){ const dist=Math.hypot(dx,dy), clamped=Math.min(dist,joystickMaxDist), ang=Math.atan2(dy,dx), lx=Math.cos(ang)*clamped, ly=Math.sin(ang)*clamped; joystickThumb.style.transform=`translate(${lx}px,${ly}px)`; joystickVector=dist>5?{x:dx/joystickMaxDist,y:dy/joystickMaxDist}:{x:0,y:0}; }
     function mouseMove(e){ mouseAimActive=true; const r=canvas.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top; const scale=Math.min(cw/VIEW_W,ch/VIEW_H); const camX=camera.x-VIEW_W/2, camY=camera.y-VIEW_H/2; mouseWorldX=camX+(cx-cw/2)/scale+camera.x; mouseWorldY=camY+(cy-ch/2)/scale+camera.y; }
     function mouseLeave(){ mouseAimActive=false; }
-    function keyDown(e){ if(!gameActive||gameEnded) return; const k=e.code; if(k==='KeyW'){ moveUp=true; e.preventDefault(); } else if(k==='KeyS'){ moveDown=true; e.preventDefault(); } else if(k==='KeyA'){ moveLeft=true; e.preventDefault(); } else if(k==='KeyD'){ moveRight=true; e.preventDefault(); } else if(k==='Space'){ shootLocal(); e.preventDefault(); } }
-    function keyUp(e){ const k=e.code; if(k==='KeyW'){ moveUp=false; e.preventDefault(); } else if(k==='KeyS'){ moveDown=false; e.preventDefault(); } else if(k==='KeyA'){ moveLeft=false; e.preventDefault(); } else if(k==='KeyD'){ moveRight=false; e.preventDefault(); } }
+    function keyDown(e){
+      log(`keyDown: ${e.code}`);
+      if(!gameActive||gameEnded) return;
+      const k=e.code;
+      if(k==='KeyW'){ moveUp=true; e.preventDefault(); }
+      else if(k==='KeyS'){ moveDown=true; e.preventDefault(); }
+      else if(k==='KeyA'){ moveLeft=true; e.preventDefault(); }
+      else if(k==='KeyD'){ moveRight=true; e.preventDefault(); }
+      else if(k==='Space'){ shootLocal(); e.preventDefault(); }
+    }
+    function keyUp(e){
+      const k=e.code;
+      if(k==='KeyW'){ moveUp=false; e.preventDefault(); }
+      else if(k==='KeyS'){ moveDown=false; e.preventDefault(); }
+      else if(k==='KeyA'){ moveLeft=false; e.preventDefault(); }
+      else if(k==='KeyD'){ moveRight=false; e.preventDefault(); }
+    }
 
-    window.addEventListener('keydown',keyDown); window.addEventListener('keyup',keyUp);
-    canvas.addEventListener('mousemove',mouseMove); canvas.addEventListener('mouseleave',mouseLeave);
-    joystickBase.addEventListener('touchstart',joyStart,{passive:false}); joystickBase.addEventListener('touchmove',joyMove,{passive:false}); joystickBase.addEventListener('touchend',joyEnd); joystickBase.addEventListener('touchcancel',joyEnd);
-    fireBtnTouch.addEventListener('touchstart',(e)=>{ e.preventDefault(); shootLocal(); }); fireBtnTouch.addEventListener('mousedown',(e)=>{ e.preventDefault(); shootLocal(); });
-    canvas.addEventListener('touchstart',(e)=>e.preventDefault(),{passive:false}); canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
+    window.addEventListener('keydown',keyDown);
+    window.addEventListener('keyup',keyUp);
+    canvas.addEventListener('mousemove',mouseMove);
+    canvas.addEventListener('mouseleave',mouseLeave);
+    joystickBase.addEventListener('touchstart',joyStart,{passive:false});
+    joystickBase.addEventListener('touchmove',joyMove,{passive:false});
+    joystickBase.addEventListener('touchend',joyEnd);
+    joystickBase.addEventListener('touchcancel',joyEnd);
+    fireBtnTouch.addEventListener('touchstart',(e)=>{ e.preventDefault(); shootLocal(); });
+    fireBtnTouch.addEventListener('mousedown',(e)=>{ e.preventDefault(); shootLocal(); });
+    canvas.addEventListener('touchstart',(e)=>e.preventDefault(),{passive:false});
+    canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
 
-    function loop(){ if(gameActive&&!gameEnded){ updateLocalAngle(); moveLocal(); updateCamera(); } draw(); requestAnimationFrame(loop); }
-    postMessage('iframe_ready'); loop();
+    function loop(){ 
+      if(gameActive&&!gameEnded){ 
+        updateLocalAngle(); 
+        moveLocal(); 
+        updateCamera(); 
+      } 
+      draw(); 
+      requestAnimationFrame(loop); 
+    }
+    postMessage('iframe_ready'); 
+    loop();
   })();
 </script>
 </body>
