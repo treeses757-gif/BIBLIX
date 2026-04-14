@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>🟨 Танчики · 3 игрока</title>
   <style>
+    /* точно такой же как в 2P */
     * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
     body { background:#1a1a1a; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:'Segoe UI',Arial,sans-serif; touch-action:pan-y; position:fixed; width:100%; height:100%; }
     .game-container { width:100%; height:100vh; display:flex; flex-direction:column; position:relative; background:#2a2a2a; }
-    canvas { display:block; width:100%; height:100%; image-rendering:auto; touch-action:none; }
+    canvas { display:block; width:100%; height:100%; image-rendering:auto; touch-action:none; outline:none; }
     .ui-overlay { position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; pointer-events:none; z-index:10; color:white; text-shadow:2px 2px 0 #000; }
     .stats { display:flex; gap:20px; background:rgba(0,0,0,0.5); padding:5px 15px; border-radius:30px; backdrop-filter:blur(4px); }
     .player-info { display:flex; align-items:center; gap:8px; }
@@ -29,7 +30,7 @@
 <body>
 <div class="orientation-warning">🎮 Пожалуйста, поверните устройство горизонтально</div>
 <div class="game-container">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
   <div class="ui-overlay"><div class="stats" id="statsPanel"></div></div>
   <div class="key-hint">WASD — движение | Мышь — прицел | Пробел — огонь</div>
   <div class="touch-controls">
@@ -57,6 +58,13 @@
     const joystickBase=document.getElementById('joystickBase'), joystickThumb=document.getElementById('joystickThumb');
     const fireBtnTouch=document.getElementById('fireBtnTouch');
     const isMobile=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||('ontouchstart' in window);
+
+    canvas.focus();
+    canvas.addEventListener('click', () => canvas.focus());
+    canvas.addEventListener('touchstart', () => canvas.focus(), { passive: false });
+
+    let lastMoveSent = 0;
+    const MOVE_THROTTLE = 50;
 
     function generateMap(){
       let m=Array(MAP_HEIGHT).fill().map(()=>Array(MAP_WIDTH).fill(0));
@@ -128,7 +136,13 @@
       statsPanel.innerHTML=html;
     }
 
-    function sendMove(){ if(gameActive&&!gameEnded) postMessage('player_action',{action:'move',px:localTank.px,py:localTank.py,angle:localTank.angle}); }
+    function sendMove(){ 
+      if(!gameActive||gameEnded) return;
+      const now = Date.now();
+      if (now - lastMoveSent < MOVE_THROTTLE) return;
+      lastMoveSent = now;
+      postMessage('player_action',{action:'move',px:localTank.px,py:localTank.py,angle:localTank.angle});
+    }
     function sendShoot(){ if(gameActive&&!gameEnded) postMessage('player_action',{action:'shoot'}); }
 
     function tileAtPixel(px,py){
@@ -206,17 +220,47 @@
     function updateJoystick(dx,dy){ const dist=Math.hypot(dx,dy), clamped=Math.min(dist,joystickMaxDist), ang=Math.atan2(dy,dx), lx=Math.cos(ang)*clamped, ly=Math.sin(ang)*clamped; joystickThumb.style.transform=`translate(${lx}px,${ly}px)`; joystickVector=dist>5?{x:dx/joystickMaxDist,y:dy/joystickMaxDist}:{x:0,y:0}; }
     function mouseMove(e){ mouseAimActive=true; const r=canvas.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top; const scale=Math.min(cw/VIEW_W,ch/VIEW_H); const camX=camera.x-VIEW_W/2, camY=camera.y-VIEW_H/2; mouseWorldX=camX+(cx-cw/2)/scale+camera.x; mouseWorldY=camY+(cy-ch/2)/scale+camera.y; }
     function mouseLeave(){ mouseAimActive=false; }
-    function keyDown(e){ if(!gameActive||gameEnded) return; const k=e.code; if(k==='KeyW'){ moveUp=true; e.preventDefault(); } else if(k==='KeyS'){ moveDown=true; e.preventDefault(); } else if(k==='KeyA'){ moveLeft=true; e.preventDefault(); } else if(k==='KeyD'){ moveRight=true; e.preventDefault(); } else if(k==='Space'){ shootLocal(); e.preventDefault(); } }
-    function keyUp(e){ const k=e.code; if(k==='KeyW'){ moveUp=false; e.preventDefault(); } else if(k==='KeyS'){ moveDown=false; e.preventDefault(); } else if(k==='KeyA'){ moveLeft=false; e.preventDefault(); } else if(k==='KeyD'){ moveRight=false; e.preventDefault(); } }
+    function keyDown(e){
+      if(!gameActive||gameEnded) return;
+      const k=e.code;
+      if(k==='KeyW'){ moveUp=true; e.preventDefault(); }
+      else if(k==='KeyS'){ moveDown=true; e.preventDefault(); }
+      else if(k==='KeyA'){ moveLeft=true; e.preventDefault(); }
+      else if(k==='KeyD'){ moveRight=true; e.preventDefault(); }
+      else if(k==='Space'){ shootLocal(); e.preventDefault(); }
+    }
+    function keyUp(e){
+      const k=e.code;
+      if(k==='KeyW'){ moveUp=false; e.preventDefault(); }
+      else if(k==='KeyS'){ moveDown=false; e.preventDefault(); }
+      else if(k==='KeyA'){ moveLeft=false; e.preventDefault(); }
+      else if(k==='KeyD'){ moveRight=false; e.preventDefault(); }
+    }
 
-    window.addEventListener('keydown',keyDown); window.addEventListener('keyup',keyUp);
-    canvas.addEventListener('mousemove',mouseMove); canvas.addEventListener('mouseleave',mouseLeave);
-    joystickBase.addEventListener('touchstart',joyStart,{passive:false}); joystickBase.addEventListener('touchmove',joyMove,{passive:false}); joystickBase.addEventListener('touchend',joyEnd); joystickBase.addEventListener('touchcancel',joyEnd);
-    fireBtnTouch.addEventListener('touchstart',(e)=>{ e.preventDefault(); shootLocal(); }); fireBtnTouch.addEventListener('mousedown',(e)=>{ e.preventDefault(); shootLocal(); });
-    canvas.addEventListener('touchstart',(e)=>e.preventDefault(),{passive:false}); canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
+    window.addEventListener('keydown',keyDown);
+    window.addEventListener('keyup',keyUp);
+    canvas.addEventListener('mousemove',mouseMove);
+    canvas.addEventListener('mouseleave',mouseLeave);
+    joystickBase.addEventListener('touchstart',joyStart,{passive:false});
+    joystickBase.addEventListener('touchmove',joyMove,{passive:false});
+    joystickBase.addEventListener('touchend',joyEnd);
+    joystickBase.addEventListener('touchcancel',joyEnd);
+    fireBtnTouch.addEventListener('touchstart',(e)=>{ e.preventDefault(); shootLocal(); });
+    fireBtnTouch.addEventListener('mousedown',(e)=>{ e.preventDefault(); shootLocal(); });
+    canvas.addEventListener('touchstart',(e)=>e.preventDefault(),{passive:false});
+    canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
 
-    function loop(){ if(gameActive&&!gameEnded){ updateLocalAngle(); moveLocal(); updateCamera(); } draw(); requestAnimationFrame(loop); }
-    postMessage('iframe_ready'); loop();
+    function loop(){ 
+      if(gameActive&&!gameEnded){ 
+        updateLocalAngle(); 
+        moveLocal(); 
+        updateCamera(); 
+      } 
+      draw(); 
+      requestAnimationFrame(loop); 
+    }
+    postMessage('iframe_ready'); 
+    loop();
   })();
 </script>
 </body>
