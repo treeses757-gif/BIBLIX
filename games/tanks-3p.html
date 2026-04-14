@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, orientation=landscape">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>🟨 Танчики · 3 игрока</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
@@ -44,10 +44,10 @@
     const TILE_SIZE=40, MAP_WIDTH=31, MAP_HEIGHT=21;
     const canvas=document.getElementById('gameCanvas'), ctx=canvas.getContext('2d');
     ctx.imageSmoothingEnabled=true;
-    let cw,ch, map=[], roomId=null, userId=null, nickname='', players={}, gameState={}, myId=null, opponentIds=[];
+    let cw,ch, map=[], roomId=null, userId=null, nickname='', players={}, gameState={}, myId=null;
     let localTank={px:0,py:0,angle:0,colorIndex:0,lives:3,ammo:5};
     let bullets=[], gameActive=false, gameEnded=false;
-    let moveUp=false, moveDown=false, moveLeft=false, moveRight=false, firePressed=false;
+    let moveUp=false, moveDown=false, moveLeft=false, moveRight=false;
     let joystickActive=false, joystickVector={x:0,y:0};
     const joystickMaxDist=35;
     let mouseAimActive=false, mouseWorldX=0, mouseWorldY=0;
@@ -59,24 +59,23 @@
     const isMobile=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||('ontouchstart' in window);
 
     function generateMap(){
-      map=Array(MAP_HEIGHT).fill().map(()=>Array(MAP_WIDTH).fill(0));
-      for(let x=0;x<MAP_WIDTH;x++){ map[0][x]=1; map[MAP_HEIGHT-1][x]=1; }
-      for(let y=0;y<MAP_HEIGHT;y++){ map[y][0]=1; map[y][MAP_WIDTH-1]=1; }
+      let m=Array(MAP_HEIGHT).fill().map(()=>Array(MAP_WIDTH).fill(0));
+      for(let x=0;x<MAP_WIDTH;x++){ m[0][x]=1; m[MAP_HEIGHT-1][x]=1; }
+      for(let y=0;y<MAP_HEIGHT;y++){ m[y][0]=1; m[y][MAP_WIDTH-1]=1; }
       const brickCount=80+Math.floor(Math.random()*60);
       for(let i=0;i<brickCount;i++){
         let x=Math.floor(Math.random()*(MAP_WIDTH-2))+1, y=Math.floor(Math.random()*(MAP_HEIGHT-2))+1;
         if((x===4&&y===4)||(x===5&&y===4)||(x===4&&y===5)) continue;
         if((x===MAP_WIDTH-5&&y===MAP_HEIGHT-5)||(x===MAP_WIDTH-6&&y===MAP_HEIGHT-5)) continue;
-        if((x===MAP_WIDTH-5&&y===4)||(x===MAP_WIDTH-6&&y===4)) continue; // третья стартовая зона
-        map[y][x]=1;
+        if((x===MAP_WIDTH-5&&y===4)||(x===MAP_WIDTH-6&&y===4)) continue;
+        m[y][x]=1;
       }
-      // очистка трёх стартовых зон
       for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){
-        let nx=4+dx, ny=4+dy; if(nx>=1&&nx<MAP_WIDTH-1&&ny>=1&&ny<MAP_HEIGHT-1) map[ny][nx]=0;
-        nx=MAP_WIDTH-5+dx; ny=MAP_HEIGHT-5+dy; if(nx>=1&&nx<MAP_WIDTH-1&&ny>=1&&ny<MAP_HEIGHT-1) map[ny][nx]=0;
-        nx=MAP_WIDTH-5+dx; ny=4+dy; if(nx>=1&&nx<MAP_WIDTH-1&&ny>=1&&ny<MAP_HEIGHT-1) map[ny][nx]=0;
+        let nx=4+dx, ny=4+dy; if(nx>=1&&nx<MAP_WIDTH-1&&ny>=1&&ny<MAP_HEIGHT-1) m[ny][nx]=0;
+        nx=MAP_WIDTH-5+dx; ny=MAP_HEIGHT-5+dy; if(nx>=1&&nx<MAP_WIDTH-1&&ny>=1&&ny<MAP_HEIGHT-1) m[ny][nx]=0;
+        nx=MAP_WIDTH-5+dx; ny=4+dy; if(nx>=1&&nx<MAP_WIDTH-1&&ny>=1&&ny<MAP_HEIGHT-1) m[ny][nx]=0;
       }
-      return map;
+      return m;
     }
 
     function postMessage(type,data={}){ window.parent.postMessage({type,...data},'*'); }
@@ -86,7 +85,7 @@
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
-          myId=userId; opponentIds=Object.keys(players).filter(id=>id!==myId);
+          myId=userId;
           if(!gameState.map){
             gameState.map=generateMap();
             gameState.players={}; gameState.bullets=[];
@@ -132,8 +131,14 @@
     function sendMove(){ if(gameActive&&!gameEnded) postMessage('player_action',{action:'move',px:localTank.px,py:localTank.py,angle:localTank.angle}); }
     function sendShoot(){ if(gameActive&&!gameEnded) postMessage('player_action',{action:'shoot'}); }
 
-    function tileAtPixel(px,py){ const tx=Math.floor(px/TILE_SIZE), ty=Math.floor(py/TILE_SIZE); if(tx<0||tx>=MAP_WIDTH||ty<0||ty>=MAP_HEIGHT) return 1; return map[ty][tx]; }
+    function tileAtPixel(px,py){
+      if(!map||map.length===0) return 1;
+      const tx=Math.floor(px/TILE_SIZE), ty=Math.floor(py/TILE_SIZE);
+      if(tx<0||tx>=MAP_WIDTH||ty<0||ty>=MAP_HEIGHT) return 1;
+      return map[ty][tx];
+    }
     function canMoveTo(px,py){
+      if(!map||map.length===0) return false;
       const half=TILE_SIZE/2-2;
       const corners=[[px-half,py-half],[px+half,py-half],[px-half,py+half],[px+half,py+half]];
       for(let c of corners) if(tileAtPixel(c[0],c[1])===1) return false;
@@ -150,7 +155,7 @@
     }
 
     function moveLocal(){
-      if(!gameActive||gameEnded) return;
+      if(!gameActive||gameEnded||!map||map.length===0) return;
       let dx=0,dy=0; const speed=isMobile?1.8:2.8;
       if(joystickActive){ const len=Math.hypot(joystickVector.x,joystickVector.y); if(len>0.2){ dx=(joystickVector.x/len)*speed; dy=(joystickVector.y/len)*speed; } }
       else if(!isMobile){ if(moveUp) dy=-speed; if(moveDown) dy=speed; if(moveLeft) dx=-speed; if(moveRight) dx=speed; }
@@ -167,6 +172,7 @@
     function updateCamera(){ camera.x+=(localTank.px-camera.x)*CAMERA_LERP; camera.y+=(localTank.py-camera.y)*CAMERA_LERP; }
 
     function draw(){
+      if(!map||map.length===0) return;
       cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
       const scale=Math.min(cw/VIEW_W,ch/VIEW_H), camX=camera.x-VIEW_W/2, camY=camera.y-VIEW_H/2;
       ctx.save(); ctx.translate(cw/2,ch/2); ctx.scale(scale,scale); ctx.translate(-camera.x,-camera.y);
@@ -194,7 +200,6 @@
       ctx.restore();
     }
 
-    // Управление (аналогично 2P)
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
