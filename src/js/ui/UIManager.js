@@ -1,21 +1,4 @@
-// src/js/ui/UIManager.js
-import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-
-// Встроенные игры (локальные файлы в папке /games/)
 const BUILT_IN_GAMES = [
-  {
-    id: 'builtin_clicker2p',
-    title: '⚡ Кликер-гонка 2P',
-    players: 2,
-    authorNickname: 'BIBLIX',
-    authorUid: 'system',
-    avatarUrl: '🎮',
-    localPath: '/BIBLIX/games/clicker2p.html',   // ← путь для GitHub Pages
-    likes: 100,
-    dislikes: 0,
-    createdAt: new Date()
-  },
-  const BUILT_IN_GAMES = [
   {
     id: 'builtin_clicker2p',
     title: '⚡ Кликер-гонка 2P',
@@ -29,38 +12,26 @@ const BUILT_IN_GAMES = [
     createdAt: new Date()
   },
   {
-    id: 'builtin_laserduel',
-    title: '🔫 Лазерная дуэль',
+    id: 'builtin_tanks2p',
+    title: '🟥 Танчики · 2P',
     players: 2,
     authorNickname: 'BIBLIX',
     authorUid: 'system',
-    avatarUrl: '🚀',
-    localPath: '/BIBLIX/games/laser-duel.html',
-    likes: 80,
+    avatarUrl: '🎮',
+    localPath: '/BIBLIX/games/tanks-2p.html',
+    likes: 150,
     dislikes: 0,
     createdAt: new Date()
   },
   {
-    id: 'builtin_deatharena',
-    title: '⚔️ Смертельная арена',
-    players: 2,
-    authorNickname: 'BIBLIX',
-    authorUid: 'system',
-    avatarUrl: '🏟️',
-    localPath: '/BIBLIX/games/death-arena.html',
-    likes: 90,
-    dislikes: 0,
-    createdAt: new Date()
-  },
-  {
-    id: 'builtin_survivalrace',
-    title: '🏁 Гонка на выживание',
+    id: 'builtin_tanks3p',
+    title: '🟨 Танчики · 3P',
     players: 3,
     authorNickname: 'BIBLIX',
     authorUid: 'system',
-    avatarUrl: '🏎️',
-    localPath: '/BIBLIX/games/survival-race.html',
-    likes: 110,
+    avatarUrl: '🎮',
+    localPath: '/BIBLIX/games/tanks-3p.html',
+    likes: 120,
     dislikes: 0,
     createdAt: new Date()
   }
