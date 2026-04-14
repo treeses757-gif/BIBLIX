@@ -1,3 +1,7 @@
+// src/js/ui/UIManager.js
+import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+// Встроенные игры (локальные файлы в папке /games/)
 const BUILT_IN_GAMES = [
   {
     id: 'builtin_clicker2p',
@@ -35,7 +39,6 @@ const BUILT_IN_GAMES = [
     dislikes: 0,
     createdAt: new Date()
   }
-  // Добавляйте новые игры сюда
 ];
 
 export class UIManager {
@@ -108,6 +111,10 @@ export class UIManager {
     const grid = document.getElementById('games-grid');
     grid.innerHTML = '<div class="loader">Загрузка игр...</div>';
     try {
+      // Проверяем, что Firestore доступен
+      if (typeof collection === 'undefined' || !window.db) {
+        throw new Error('Firestore не инициализирован');
+      }
       const gamesCol = collection(window.db, 'games');
       const q = query(gamesCol, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
