@@ -14,6 +14,55 @@ const BUILT_IN_GAMES = [
     likes: 100,
     dislikes: 0,
     createdAt: new Date()
+  },
+  const BUILT_IN_GAMES = [
+  {
+    id: 'builtin_clicker2p',
+    title: '⚡ Кликер-гонка 2P',
+    players: 2,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🎮',
+    localPath: '/BIBLIX/games/clicker2p.html',
+    likes: 100,
+    dislikes: 0,
+    createdAt: new Date()
+  },
+  {
+    id: 'builtin_laserduel',
+    title: '🔫 Лазерная дуэль',
+    players: 2,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🚀',
+    localPath: '/BIBLIX/games/laser-duel.html',
+    likes: 80,
+    dislikes: 0,
+    createdAt: new Date()
+  },
+  {
+    id: 'builtin_deatharena',
+    title: '⚔️ Смертельная арена',
+    players: 2,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🏟️',
+    localPath: '/BIBLIX/games/death-arena.html',
+    likes: 90,
+    dislikes: 0,
+    createdAt: new Date()
+  },
+  {
+    id: 'builtin_survivalrace',
+    title: '🏁 Гонка на выживание',
+    players: 3,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🏎️',
+    localPath: '/BIBLIX/games/survival-race.html',
+    likes: 110,
+    dislikes: 0,
+    createdAt: new Date()
   }
   // Добавляйте новые игры сюда
 ];
