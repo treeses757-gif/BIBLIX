@@ -58,6 +58,9 @@
     const fireBtnTouch=document.getElementById('fireBtnTouch');
     const isMobile=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||('ontouchstart' in window);
 
+    // Интерполяция для других игроков
+    const remoteTanks = {}; // id -> { targetX, targetY, targetAngle, currentX, currentY, currentAngle }
+
     canvas.focus();
     canvas.addEventListener('click', () => canvas.focus());
     canvas.addEventListener('touchstart', () => canvas.focus(), { passive: false });
@@ -103,10 +106,13 @@
             postMessage('state_update',{gameState});
           }
           map=gameState.map; bullets=gameState.bullets||[];
-          updateLocalFromState(); gameActive=true; updateUI();
+          updateLocalFromState();
+          initRemoteTanks();
+          gameActive=true; updateUI();
           break;
         case 'state_update':
           gameState=d.gameState||{}; map=gameState.map; bullets=gameState.bullets||[];
+          updateRemoteTargets();
           updateLocalFromState();
           if(gameState.winner){ gameEnded=true; gameActive=false; messageBox.style.display='block'; messageBox.textContent=gameState.winner===myId?'🏆 Вы победили!':`😔 Победил ${players[gameState.winner]?.nickname}`; }
           updateUI();
@@ -117,6 +123,46 @@
           break;
       }
     });
+
+    function initRemoteTanks() {
+      for (let id in gameState.players) {
+        if (id === myId) continue;
+        const t = gameState.players[id];
+        remoteTanks[id] = {
+          targetX: t.px, targetY: t.py, targetAngle: t.angle,
+          currentX: t.px, currentY: t.py, currentAngle: t.angle
+        };
+      }
+    }
+
+    function updateRemoteTargets() {
+      for (let id in gameState.players) {
+        if (id === myId) continue;
+        const t = gameState.players[id];
+        if (!remoteTanks[id]) {
+          remoteTanks[id] = { currentX: t.px, currentY: t.py, currentAngle: t.angle };
+        }
+        remoteTanks[id].targetX = t.px;
+        remoteTanks[id].targetY = t.py;
+        remoteTanks[id].targetAngle = t.angle;
+      }
+    }
+
+    function interpolateRemoteTanks() {
+      const LERP = 0.25;
+      for (let id in remoteTanks) {
+        const r = remoteTanks[id];
+        r.currentX += (r.targetX - r.currentX) * LERP;
+        r.currentY += (r.targetY - r.currentY) * LERP;
+        r.currentAngle += (r.targetAngle - r.currentAngle) * LERP;
+        // Обновляем в gameState для отрисовки
+        if (gameState.players[id]) {
+          gameState.players[id].px = r.currentX;
+          gameState.players[id].py = r.currentY;
+          gameState.players[id].angle = r.currentAngle;
+        }
+      }
+    }
 
     function updateLocalFromState(){
       if(gameState.players&&gameState.players[myId]) Object.assign(localTank,gameState.players[myId]);
@@ -210,6 +256,7 @@
       ctx.restore();
     }
 
+    // Джойстик, мышь, клавиатура без изменений...
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
@@ -251,6 +298,7 @@
         updateLocalAngle(); 
         moveLocal(); 
         updateCamera(); 
+        interpolateRemoteTanks();
       } 
       draw(); 
       requestAnimationFrame(loop); 
