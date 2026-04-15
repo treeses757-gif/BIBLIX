@@ -112,7 +112,6 @@ export class Matchmaker {
           players: session.players
         });
 
-        // Проверка победителя (безопасно)
         if (session.gameState && session.gameState.winner) {
           await this.endGame(roomId, session.gameState.winner);
         }
@@ -174,7 +173,6 @@ export class Matchmaker {
 
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
-    const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
 
     if (data.action === 'move') {
       const updates = {};
@@ -184,6 +182,7 @@ export class Matchmaker {
       await update(ref(this.rtdb), updates);
     }
     else if (data.action === 'shoot') {
+      const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
       const snap = await get(gameStateRef);
       const gameState = snap.val() || { players: {}, bullets: [] };
       const player = gameState.players?.[userId];
