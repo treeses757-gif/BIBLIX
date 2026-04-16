@@ -10,7 +10,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: 'games/clicker2p.html',   // относительный путь
+    localPath: '/BIBLIX/games/clicker2p.html',
     likes: 100,
     dislikes: 0,
     createdAt: new Date()
@@ -22,7 +22,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: 'games/tanks-2p.html',
+    localPath: '/BIBLIX/games/tanks-2p.html',
     likes: 150,
     dislikes: 0,
     createdAt: new Date()
@@ -34,7 +34,7 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: 'games/tanks-3p.html',
+    localPath: '/BIBLIX/games/tanks-3p.html',
     likes: 120,
     dislikes: 0,
     createdAt: new Date()
