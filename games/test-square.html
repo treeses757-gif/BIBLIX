@@ -1,17 +1,15 @@
-<!-- games/test-square.html (с отладкой) -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🟦 Тест квадратики 2P (DEBUG)</title>
+  <title>🟦 Тест квадратики 2P</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
     body { background:#111; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:Arial; touch-action:pan-y; position:fixed; width:100%; height:100%; }
     .game-container { width:100%; height:100vh; display:flex; flex-direction:column; position:relative; background:#222; }
     canvas { display:block; width:100%; height:100%; touch-action:none; outline:none; }
     .ui-overlay { position:absolute; top:10px; left:10px; color:white; background:rgba(0,0,0,0.5); padding:5px 15px; border-radius:30px; z-index:10; }
-    #debug { position:absolute; top:60px; left:10px; color:#0f0; background:rgba(0,0,0,0.7); padding:5px; font-size:12px; border-radius:8px; max-height:200px; overflow-y:auto; }
     .touch-controls { position:absolute; bottom:30px; left:20px; right:20px; display:flex; justify-content:space-between; align-items:flex-end; pointer-events:none; z-index:20; }
     .joystick-container { width:110px; height:110px; background:rgba(255,255,255,0.2); border-radius:60px; backdrop-filter:blur(4px); border:2px solid #aaa; position:relative; pointer-events:auto; touch-action:none; }
     .joystick-thumb { width:50px; height:50px; background:#fff; border-radius:30px; position:absolute; left:30px; top:30px; box-shadow:0 4px 0 #aaa; transition:transform 0.02s; pointer-events:none; }
@@ -24,7 +22,6 @@
 <div class="game-container">
   <canvas id="gameCanvas" tabindex="0"></canvas>
   <div class="ui-overlay" id="statusDisplay">Ожидание...</div>
-  <div id="debug">Логи:</div>
   <div class="key-hint">←↑↓→ — двигать свой квадрат</div>
   <div class="touch-controls">
     <div class="joystick-container" id="joystickBase"><div class="joystick-thumb" id="joystickThumb"></div></div>
@@ -35,7 +32,6 @@
     "use strict";
     const canvas=document.getElementById('gameCanvas'), ctx=canvas.getContext('2d');
     let cw,ch;
-    const debugEl = document.getElementById('debug');
     
     let roomId=null, userId=null, nickname='', players={}, gameState={}, myId=null;
     let gameActive=false;
@@ -49,33 +45,34 @@
     const statusDisplay=document.getElementById('statusDisplay');
     const isMobile=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||('ontouchstart' in window);
     
-    function log(msg) { console.log('[SQUARE]', msg); debugEl.innerHTML += '<br>'+msg; debugEl.scrollTop=debugEl.scrollHeight; }
-    
     canvas.focus();
     canvas.addEventListener('click',()=>canvas.focus());
     canvas.addEventListener('touchstart',()=>canvas.focus(),{passive:false});
     
     let lastMoveSent=0;
     const MOVE_THROTTLE=30;
+
+    function log(msg, data) {
+      console.log(`[Square] ${msg}`, data || '');
+      statusDisplay.textContent = msg;
+    }
     
     function postMessage(type,data={}){ 
-      log(`📤 ${type} ${JSON.stringify(data).substring(0,50)}`);
       window.parent.postMessage({type,...data},'*');
+      log(`📤 ${type}`, data);
     }
     
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
-      log(`📨 ${d.type}`);
+      log(`📨 ${d.type}`, d);
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
           myId=userId;
-          log(`🎮 Init myId=${myId}, players=${Object.keys(players)}`);
           if(!gameState.players){
             gameState.players={};
             Object.keys(players).forEach((id,idx)=>{
               gameState.players[id]={x:200+idx*100, y:200+idx*80};
-              log(`  spawn ${id} at (${gameState.players[id].x},${gameState.players[id].y})`);
             });
             postMessage('state_update',{gameState});
           }
@@ -85,9 +82,12 @@
           break;
         case 'state_update':
           gameState=d.gameState||{};
-          log(`🔄 state_update players: ${JSON.stringify(gameState.players)}`);
           if(gameState.players){
-            if(gameState.players[myId]){ myPos.x=gameState.players[myId].x; myPos.y=gameState.players[myId].y; }
+            // Обновляем позицию своего квадрата из состояния (на случай, если сервер поправил)
+            if(gameState.players[myId]){
+              myPos.x=gameState.players[myId].x;
+              myPos.y=gameState.players[myId].y;
+            }
           }
           updateStatus();
           break;
@@ -135,6 +135,8 @@
     function draw(){
       cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
       ctx.clearRect(0,0,cw,ch);
+      
+      // Рисуем себя
       ctx.fillStyle='#3a9bdc';
       ctx.fillRect(myPos.x-SIZE/2, myPos.y-SIZE/2, SIZE, SIZE);
       ctx.fillStyle='white';
@@ -142,11 +144,12 @@
       ctx.textAlign='center';
       ctx.fillText(nickname||'Вы', myPos.x, myPos.y-30);
       
+      // Рисуем других игроков
       if(gameState.players){
         for(let id in gameState.players){
           if(id===myId) continue;
           const p=gameState.players[id];
-          if(!p) continue;
+          if(!p || typeof p.x !== 'number') continue;
           ctx.fillStyle='#e94560';
           ctx.fillRect(p.x-SIZE/2, p.y-SIZE/2, SIZE, SIZE);
           ctx.fillStyle='white';
@@ -191,7 +194,6 @@
       requestAnimationFrame(loop);
     }
     postMessage('iframe_ready');
-    log('🚀 Iframe ready');
     loop();
   })();
 </script>
