@@ -69,90 +69,115 @@
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
           myId=userId;
-          if(!gameState.players){
-            gameState.players={};
-            Object.keys(players).forEach((id,idx)=>{
-              gameState.players[id]={x:200+idx*100, y:200+idx*80};
-            });
-            postMessage('state_update',{gameState});
+          
+          // Гарантируем наличие gameState.players
+          if (!gameState.players) {
+            gameState.players = {};
           }
-          if(gameState.players[myId]){ myPos.x=gameState.players[myId].x; myPos.y=gameState.players[myId].y; }
-          gameActive=true;
+          
+          // Если текущего игрока нет в gameState.players, добавляем его с начальной позицией
+          if (!gameState.players[myId]) {
+            const ids = Object.keys(players);
+            const idx = ids.indexOf(myId);
+            gameState.players[myId] = { x: 200 + idx * 100, y: 200 + idx * 80 };
+            // Отправляем обновлённое состояние на сервер
+            postMessage('state_update', { gameState });
+          }
+          
+          // Синхронизируем свою позицию
+          if (gameState.players[myId]) {
+            myPos.x = gameState.players[myId].x;
+            myPos.y = gameState.players[myId].y;
+          }
+          
+          gameActive = true;
           logToScreen(`✅ Игра началась. Ваш ID: ${myId}`);
           break;
+          
         case 'state_update':
-          gameState=d.gameState||{};
-          if(gameState.players){
-            if(gameState.players[myId]){
-              myPos.x=gameState.players[myId].x;
-              myPos.y=gameState.players[myId].y;
+          gameState = d.gameState || {};
+          if (gameState.players) {
+            // Обновляем свою позицию, если она есть в состоянии
+            if (gameState.players[myId]) {
+              myPos.x = gameState.players[myId].x;
+              myPos.y = gameState.players[myId].y;
             }
-            // Вывод позиций всех игроков
+            // Вывод позиций всех игроков (для отладки)
             let txt = `Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
-            for(let id in players){
-              if(id===myId) continue;
+            for (let id in players) {
+              if (id === myId) continue;
               const p = gameState.players[id];
-              if(p) txt += `${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
+              if (p) txt += `${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
             }
             statusDisplay.textContent = txt;
           }
           break;
+          
         case 'game_over':
-          gameActive=false;
+          gameActive = false;
           logToScreen(`🏁 Игра окончена`);
           break;
       }
     });
     
     function sendMove(){
-      if(!gameActive) return;
-      const now=Date.now();
-      if(now-lastMoveSent<MOVE_THROTTLE) return;
-      lastMoveSent=now;
-      postMessage('player_action',{action:'move',x:myPos.x,y:myPos.y});
+      if (!gameActive) return;
+      const now = Date.now();
+      if (now - lastMoveSent < MOVE_THROTTLE) return;
+      lastMoveSent = now;
+      postMessage('player_action', { action: 'move', x: myPos.x, y: myPos.y });
     }
     
     function moveLocal(){
-      if(!gameActive) return;
-      let dx=0,dy=0; const speed=3;
-      if(joystickActive){
-        const len=Math.hypot(joystickVector.x,joystickVector.y);
-        if(len>0.2){ dx=(joystickVector.x/len)*speed; dy=(joystickVector.y/len)*speed; }
-      }else if(!isMobile){
-        if(moveUp) dy=-speed; if(moveDown) dy=speed;
-        if(moveLeft) dx=-speed; if(moveRight) dx=speed;
+      if (!gameActive) return;
+      let dx=0, dy=0; const speed=3;
+      if (joystickActive) {
+        const len = Math.hypot(joystickVector.x, joystickVector.y);
+        if (len > 0.2) {
+          dx = (joystickVector.x / len) * speed;
+          dy = (joystickVector.y / len) * speed;
+        }
+      } else if (!isMobile) {
+        if (moveUp) dy = -speed;
+        if (moveDown) dy = speed;
+        if (moveLeft) dx = -speed;
+        if (moveRight) dx = speed;
       }
-      if(dx!==0||dy!==0){
-        myPos.x=Math.max(SIZE/2, Math.min(cw-SIZE/2, myPos.x+dx));
-        myPos.y=Math.max(SIZE/2, Math.min(ch-SIZE/2, myPos.y+dy));
+      if (dx !== 0 || dy !== 0) {
+        myPos.x = Math.max(SIZE/2, Math.min(cw - SIZE/2, myPos.x + dx));
+        myPos.y = Math.max(SIZE/2, Math.min(ch - SIZE/2, myPos.y + dy));
         sendMove();
       }
     }
     
     function draw(){
-      cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
-      ctx.clearRect(0,0,cw,ch);
+      cw = canvas.width = window.innerWidth;
+      ch = canvas.height = window.innerHeight;
+      ctx.clearRect(0, 0, cw, ch);
       
-      ctx.fillStyle='#3a9bdc';
-      ctx.fillRect(myPos.x-SIZE/2, myPos.y-SIZE/2, SIZE, SIZE);
-      ctx.fillStyle='white';
-      ctx.font='bold 14px Arial';
-      ctx.textAlign='center';
-      ctx.fillText(nickname||'Вы', myPos.x, myPos.y-30);
+      // Рисуем себя
+      ctx.fillStyle = '#3a9bdc';
+      ctx.fillRect(myPos.x - SIZE/2, myPos.y - SIZE/2, SIZE, SIZE);
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(nickname || 'Вы', myPos.x, myPos.y - 30);
       
-      if(gameState.players){
-        for(let id in gameState.players){
-          if(id===myId) continue;
-          const p=gameState.players[id];
-          if(!p || typeof p.x !== 'number') continue;
-          ctx.fillStyle='#e94560';
-          ctx.fillRect(p.x-SIZE/2, p.y-SIZE/2, SIZE, SIZE);
-          ctx.fillStyle='white';
-          ctx.fillText(players[id]?.nickname||id, p.x, p.y-30);
+      // Рисуем соперников
+      if (gameState.players) {
+        for (let id in gameState.players) {
+          if (id === myId) continue;
+          const p = gameState.players[id];
+          if (!p || typeof p.x !== 'number') continue;
+          ctx.fillStyle = '#e94560';
+          ctx.fillRect(p.x - SIZE/2, p.y - SIZE/2, SIZE, SIZE);
+          ctx.fillStyle = 'white';
+          ctx.fillText(players[id]?.nickname || id, p.x, p.y - 30);
         }
       }
     }
     
+    // Джойстик и клавиатура (без изменений)
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
