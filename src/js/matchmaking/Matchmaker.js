@@ -70,12 +70,21 @@ export class Matchmaker {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
         });
 
+        // Инициализируем gameState с базовой структурой и позициями игроков (для квадратиков)
         const initialGameState = {
           players: {},
           bullets: [],
           map: null,
           winner: null
         };
+
+        // Для игр, где нужны координаты (test-square, танки инициализируют себя сами)
+        Object.keys(playersObj).forEach((pid, idx) => {
+          initialGameState.players[pid] = {
+            x: 200 + idx * 100,
+            y: 200 + idx * 80
+          };
+        });
 
         await set(sessionRef, {
           gameId: game.id,
