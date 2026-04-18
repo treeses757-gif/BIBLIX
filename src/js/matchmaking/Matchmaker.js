@@ -143,6 +143,7 @@ export class Matchmaker {
         await this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'state_update') {
+        // Сохраняем обновлённое состояние от клиента
         if (data.gameState) {
           await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
         }
