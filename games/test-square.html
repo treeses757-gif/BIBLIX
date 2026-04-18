@@ -9,7 +9,7 @@
     body { background:#111; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:Arial; touch-action:pan-y; position:fixed; width:100%; height:100%; }
     .game-container { width:100%; height:100vh; display:flex; flex-direction:column; position:relative; background:#222; }
     canvas { display:block; width:100%; height:100%; touch-action:none; outline:none; }
-    .ui-overlay { position:absolute; top:10px; left:10px; color:white; background:rgba(0,0,0,0.5); padding:5px 15px; border-radius:30px; z-index:10; }
+    .ui-overlay { position:absolute; top:10px; left:10px; color:white; background:rgba(0,0,0,0.5); padding:5px 15px; border-radius:30px; z-index:10; max-width:90%; word-wrap:break-word; }
     .touch-controls { position:absolute; bottom:30px; left:20px; right:20px; display:flex; justify-content:space-between; align-items:flex-end; pointer-events:none; z-index:20; }
     .joystick-container { width:110px; height:110px; background:rgba(255,255,255,0.2); border-radius:60px; backdrop-filter:blur(4px); border:2px solid #aaa; position:relative; pointer-events:auto; touch-action:none; }
     .joystick-thumb { width:50px; height:50px; background:#fff; border-radius:30px; position:absolute; left:30px; top:30px; box-shadow:0 4px 0 #aaa; transition:transform 0.02s; pointer-events:none; }
@@ -52,19 +52,19 @@
     let lastMoveSent=0;
     const MOVE_THROTTLE=30;
 
-    function log(msg, data) {
-      console.log(`[Square] ${msg}`, data || '');
+    function logToScreen(msg) {
+      console.log('[Square]', msg);
       statusDisplay.textContent = msg;
     }
     
     function postMessage(type,data={}){ 
       window.parent.postMessage({type,...data},'*');
-      log(`📤 ${type}`, data);
+      logToScreen(`📤 ${type} ${JSON.stringify(data).slice(0,60)}`);
     }
     
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
-      log(`📨 ${d.type}`, d);
+      logToScreen(`📨 ${d.type} ${JSON.stringify(d).slice(0,80)}`);
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
@@ -78,34 +78,31 @@
           }
           if(gameState.players[myId]){ myPos.x=gameState.players[myId].x; myPos.y=gameState.players[myId].y; }
           gameActive=true;
-          updateStatus();
+          logToScreen(`✅ Игра началась. Ваш ID: ${myId}`);
           break;
         case 'state_update':
           gameState=d.gameState||{};
           if(gameState.players){
-            // Обновляем позицию своего квадрата из состояния (на случай, если сервер поправил)
             if(gameState.players[myId]){
               myPos.x=gameState.players[myId].x;
               myPos.y=gameState.players[myId].y;
             }
+            // Вывод позиций всех игроков
+            let txt = `Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
+            for(let id in players){
+              if(id===myId) continue;
+              const p = gameState.players[id];
+              if(p) txt += `${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
+            }
+            statusDisplay.textContent = txt;
           }
-          updateStatus();
           break;
         case 'game_over':
           gameActive=false;
+          logToScreen(`🏁 Игра окончена`);
           break;
       }
     });
-    
-    function updateStatus(){
-      let txt=`Вы: ${nickname} (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
-      for(let id in players){
-        if(id===myId) continue;
-        const p=gameState.players?.[id]||{x:0,y:0};
-        txt+=`${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
-      }
-      statusDisplay.textContent=txt;
-    }
     
     function sendMove(){
       if(!gameActive) return;
@@ -136,7 +133,6 @@
       cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
       ctx.clearRect(0,0,cw,ch);
       
-      // Рисуем себя
       ctx.fillStyle='#3a9bdc';
       ctx.fillRect(myPos.x-SIZE/2, myPos.y-SIZE/2, SIZE, SIZE);
       ctx.fillStyle='white';
@@ -144,7 +140,6 @@
       ctx.textAlign='center';
       ctx.fillText(nickname||'Вы', myPos.x, myPos.y-30);
       
-      // Рисуем других игроков
       if(gameState.players){
         for(let id in gameState.players){
           if(id===myId) continue;
