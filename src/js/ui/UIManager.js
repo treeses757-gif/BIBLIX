@@ -1,5 +1,7 @@
 // src/js/ui/UIManager.js
-import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+import { 
+  collection, getDocs, query, orderBy 
+} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
 // Встроенные игры (локальные файлы в папке /games/)
 const BUILT_IN_GAMES = [
@@ -123,14 +125,11 @@ export class UIManager {
     const grid = document.getElementById('games-grid');
     grid.innerHTML = '<div class="loader">Загрузка игр...</div>';
     try {
-      // Проверяем, что Firestore доступен
-      if (typeof collection === 'undefined' || !window.db) {
-        throw new Error('Firestore не инициализирован');
-      }
       const gamesCol = collection(window.db, 'games');
       const q = query(gamesCol, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       const firestoreGames = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Объединяем встроенные игры с пользовательскими
       this.allGames = [...BUILT_IN_GAMES, ...firestoreGames];
       this.renderGames();
     } catch (e) {
@@ -217,26 +216,6 @@ export class UIManager {
     } else {
       this.matchmaker.startMatchmaking(game);
     }
-
-    // Фокус на iframe после запуска
-    const container = document.getElementById('game-container');
-    const iframe = document.getElementById('game-iframe');
-
-    const focusIframe = () => {
-      iframe.focus();
-      if (iframe.contentWindow) {
-        iframe.contentWindow.focus();
-      }
-    };
-
-    iframe.addEventListener('load', focusIframe, { once: true });
-    if (iframe.src && iframe.contentDocument?.readyState === 'complete') {
-      setTimeout(focusIframe, 50);
-    }
-
-    document.getElementById('close-game-btn').addEventListener('click', () => {
-      iframe.blur();
-    });
   }
 
   showRatingModal(game) {
@@ -251,6 +230,7 @@ export class UIManager {
     const iframe = document.getElementById('game-iframe');
     iframe.src = 'about:blank';
     container.style.display = 'none';
+    // Удаление слушателя сообщений происходит в GameLauncher
   }
 
   initEventListeners() {
@@ -315,6 +295,7 @@ export class UIManager {
       if (this.matchmaker && this.matchmaker.roomId) {
         this.matchmaker.cleanup();
       }
+      this.gameLauncher.cleanup(); // очистка слушателей
       this.hideGameContainer();
     });
 
