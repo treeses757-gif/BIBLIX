@@ -38,6 +38,18 @@ const BUILT_IN_GAMES = [
     likes: 120,
     dislikes: 0,
     createdAt: new Date()
+  },
+  {
+    id: 'builtin_test_square',
+    title: '🟦 Тест квадратики 2P',
+    players: 2,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🟦',
+    localPath: '/BIBLIX/games/test-square.html',
+    likes: 0,
+    dislikes: 0,
+    createdAt: new Date()
   }
 ];
 
@@ -218,12 +230,10 @@ export class UIManager {
     };
 
     iframe.addEventListener('load', focusIframe, { once: true });
-    // Если iframe уже загружен (например, при повторном открытии)
     if (iframe.src && iframe.contentDocument?.readyState === 'complete') {
       setTimeout(focusIframe, 50);
     }
 
-    // Убираем фокус при закрытии
     document.getElementById('close-game-btn').addEventListener('click', () => {
       iframe.blur();
     });
