@@ -140,7 +140,7 @@ export class Matchmaker {
         });
       }
       else if (data.type === 'player_action') {
-        this.handlePlayerAction(roomId, this.userId, data);
+        await this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'state_update') {
         if (data.gameState) {
@@ -173,16 +173,23 @@ export class Matchmaker {
 
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
+    const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
 
     if (data.action === 'move') {
       const updates = {};
-      updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
-      updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
-      updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
+      if (data.px !== undefined) {
+        // для танчиков
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
+      } else if (data.x !== undefined) {
+        // для квадратиков
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
+      }
       await update(ref(this.rtdb), updates);
     }
     else if (data.action === 'shoot') {
-      const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
       const snap = await get(gameStateRef);
       const gameState = snap.val() || { players: {}, bullets: [] };
       const player = gameState.players?.[userId];
