@@ -70,7 +70,6 @@ export class Matchmaker {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
         });
 
-        // Инициализируем gameState с базовой структурой и позициями игроков (для квадратиков)
         const initialGameState = {
           players: {},
           bullets: [],
@@ -78,7 +77,7 @@ export class Matchmaker {
           winner: null
         };
 
-        // Для игр, где нужны координаты (test-square, танки инициализируют себя сами)
+        // Инициализируем позиции для игр, где нужны координаты (test-square)
         Object.keys(playersObj).forEach((pid, idx) => {
           initialGameState.players[pid] = {
             x: 200 + idx * 100,
@@ -152,7 +151,6 @@ export class Matchmaker {
         await this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'state_update') {
-        // Сохраняем обновлённое состояние от клиента
         if (data.gameState) {
           await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
         }
@@ -184,55 +182,69 @@ export class Matchmaker {
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
     const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
+    const playersRef = ref(this.rtdb, `gameSessions/${roomId}/players`);
 
-    if (data.action === 'move') {
-      const updates = {};
-      if (data.px !== undefined) {
-        // для танчиков
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
-      } else if (data.x !== undefined) {
-        // для квадратиков
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
+    try {
+      if (data.action === 'move') {
+        const updates = {};
+        if (data.px !== undefined) {
+          // для танчиков
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
+        } else if (data.x !== undefined) {
+          // для квадратиков
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
+        }
+        await update(ref(this.rtdb), updates);
       }
-      await update(ref(this.rtdb), updates);
-    }
-    else if (data.action === 'shoot') {
-      const snap = await get(gameStateRef);
-      const gameState = snap.val() || { players: {}, bullets: [] };
-      const player = gameState.players?.[userId];
-      if (!player || player.ammo <= 0) return;
+      else if (data.action === 'shoot') {
+        const snap = await get(gameStateRef);
+        const gameState = snap.val() || { players: {}, bullets: [] };
+        const player = gameState.players?.[userId];
+        if (!player || player.ammo <= 0) return;
 
-      const newAmmo = player.ammo - 1;
-      const angle = player.angle || 0;
-      const barrelLength = 24;
-      const spawnX = player.px + Math.cos(angle) * barrelLength;
-      const spawnY = player.py + Math.sin(angle) * barrelLength;
-      const BULLET_SPEED = 6;
-      const vx = Math.cos(angle) * BULLET_SPEED;
-      const vy = Math.sin(angle) * BULLET_SPEED;
+        const newAmmo = player.ammo - 1;
+        const angle = player.angle || 0;
+        const barrelLength = 24;
+        const spawnX = player.px + Math.cos(angle) * barrelLength;
+        const spawnY = player.py + Math.sin(angle) * barrelLength;
+        const BULLET_SPEED = 6;
+        const vx = Math.cos(angle) * BULLET_SPEED;
+        const vy = Math.sin(angle) * BULLET_SPEED;
 
-      const bullet = {
-        id: Date.now() + '_' + Math.random(),
-        x: spawnX, y: spawnY,
-        vx, vy,
-        owner: userId,
-      };
+        const bullet = {
+          id: Date.now() + '_' + Math.random(),
+          x: spawnX, y: spawnY,
+          vx, vy,
+          owner: userId,
+        };
 
-      const bullets = gameState.bullets || [];
-      bullets.push(bullet);
-      if (bullets.length > 50) bullets.shift();
+        const bullets = gameState.bullets || [];
+        bullets.push(bullet);
+        if (bullets.length > 50) bullets.shift();
 
-      const updates = {};
-      updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
-      updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
-      await update(ref(this.rtdb), updates);
-    }
-    else if (data.action === 'click') {
-      const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
-      await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+        const updates = {};
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
+        updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
+        await update(ref(this.rtdb), updates);
+      }
+      else if (data.action === 'click') {
+        const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+        await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+      }
+
+      // Принудительно отправляем обновлённое состояние всем клиентам
+      const updatedGameState = (await get(gameStateRef)).val() || {};
+      const playersSnapshot = await get(playersRef);
+      this.sendToIframe({
+        type: 'state_update',
+        gameState: updatedGameState,
+        players: playersSnapshot.val() || {}
+      });
+    } catch (error) {
+      console.error('Error handling player action:', error);
     }
   }
 
