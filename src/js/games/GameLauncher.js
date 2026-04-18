@@ -7,6 +7,7 @@ export class GameLauncher {
     this.rtdb = rtdb;
     this.auth = auth;
     this.ui = null;
+    this.messageHandler = null;
   }
 
   setUI(ui) { this.ui = ui; }
@@ -41,6 +42,17 @@ export class GameLauncher {
       return;
     }
 
+    // Удаляем предыдущий обработчик, если есть
+    this.cleanup();
+
+    this.messageHandler = (event) => {
+      if (event.data && event.data.type === 'game_over') {
+        this.ui.hideGameContainer();
+        this.cleanup();
+      }
+    };
+    window.addEventListener('message', this.messageHandler);
+
     iframe.src = url;
     iframe.onload = () => {
       if (game.htmlContent) URL.revokeObjectURL(url);
@@ -48,6 +60,13 @@ export class GameLauncher {
     container.style.display = 'flex';
 
     this.rewardAuthor(game);
+  }
+
+  cleanup() {
+    if (this.messageHandler) {
+      window.removeEventListener('message', this.messageHandler);
+      this.messageHandler = null;
+    }
   }
 
   async rewardAuthor(game) {
