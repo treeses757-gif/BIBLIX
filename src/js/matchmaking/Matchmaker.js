@@ -149,6 +149,8 @@ export class Matchmaker {
       }
       else if (data.type === 'player_action') {
         await this.handlePlayerAction(roomId, this.userId, data);
+        // После обработки действия рассылаем обновлённое состояние всем игрокам
+        await this.broadcastGameState(roomId);
       }
       else if (data.type === 'state_update') {
         if (data.gameState) {
@@ -179,21 +181,37 @@ export class Matchmaker {
     }
   }
 
+  async broadcastGameState(roomId) {
+    // Получаем актуальное состояние из RTDB и отправляем его всем iframe в комнате
+    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
+    const snapshot = await get(sessionRef);
+    if (!snapshot.exists()) return;
+    const session = snapshot.val();
+    const message = {
+      type: 'state_update',
+      gameState: session.gameState || {},
+      players: session.players || {}
+    };
+    // Отправляем текущему игроку
+    this.sendToIframe(message);
+    // TODO: в реальном приложении нужна возможность отправить всем iframe в комнате.
+    // В нашей архитектуре каждый клиент имеет свой Matchmaker и слушает onValue,
+    // поэтому достаточно, чтобы onValue сработал. Но для надёжности оставим отправку текущему.
+    // Второй игрок получит обновление через свой onValue.
+  }
+
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
     const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
-    const playersRef = ref(this.rtdb, `gameSessions/${roomId}/players`);
 
     try {
       if (data.action === 'move') {
         const updates = {};
         if (data.px !== undefined) {
-          // для танчиков
           updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
           updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
           updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
         } else if (data.x !== undefined) {
-          // для квадратиков
           updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
           updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
         }
@@ -234,15 +252,6 @@ export class Matchmaker {
         const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
         await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
       }
-
-      // Принудительно отправляем обновлённое состояние всем клиентам
-      const updatedGameState = (await get(gameStateRef)).val() || {};
-      const playersSnapshot = await get(playersRef);
-      this.sendToIframe({
-        type: 'state_update',
-        gameState: updatedGameState,
-        players: playersSnapshot.val() || {}
-      });
     } catch (error) {
       console.error('Error handling player action:', error);
     }
