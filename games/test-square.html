@@ -59,50 +59,37 @@
     
     function postMessage(type,data={}){ 
       window.parent.postMessage({type,...data},'*');
-      logToScreen(`📤 ${type} ${JSON.stringify(data).slice(0,60)}`);
+      // logToScreen(`📤 ${type} ${JSON.stringify(data).slice(0,60)}`);
     }
     
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
-      logToScreen(`📨 ${d.type} ${JSON.stringify(d).slice(0,80)}`);
+      // logToScreen(`📨 ${d.type}`);
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
           myId=userId;
           
-          // Гарантируем наличие gameState.players
-          if (!gameState.players) {
-            gameState.players = {};
-          }
-          
-          // Если текущего игрока нет в gameState.players, добавляем его с начальной позицией
-          if (!gameState.players[myId]) {
-            const ids = Object.keys(players);
-            const idx = ids.indexOf(myId);
-            gameState.players[myId] = { x: 200 + idx * 100, y: 200 + idx * 80 };
-            // Отправляем обновлённое состояние на сервер
-            postMessage('state_update', { gameState });
-          }
-          
-          // Синхронизируем свою позицию
-          if (gameState.players[myId]) {
+          // Сервер уже инициализировал gameState.players с позициями
+          if (gameState.players && gameState.players[myId]) {
             myPos.x = gameState.players[myId].x;
             myPos.y = gameState.players[myId].y;
           }
           
           gameActive = true;
-          logToScreen(`✅ Игра началась. Ваш ID: ${myId}`);
+          logToScreen(`✅ Игра началась. Вы: ${nickname}`);
           break;
           
         case 'state_update':
           gameState = d.gameState || {};
+          players = d.players || players; // обновляем список игроков
           if (gameState.players) {
-            // Обновляем свою позицию, если она есть в состоянии
+            // Обновляем свою позицию, если она изменилась (на случай внешних изменений)
             if (gameState.players[myId]) {
               myPos.x = gameState.players[myId].x;
               myPos.y = gameState.players[myId].y;
             }
-            // Вывод позиций всех игроков (для отладки)
+            // Отображаем статус
             let txt = `Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
             for (let id in players) {
               if (id === myId) continue;
@@ -177,7 +164,7 @@
       }
     }
     
-    // Джойстик и клавиатура (без изменений)
+    // Джойстик и клавиатура
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
