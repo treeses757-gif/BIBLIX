@@ -1,5 +1,5 @@
 // src/js/matchmaking/Matchmaker.js
-import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get, child } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
@@ -77,7 +77,7 @@ export class Matchmaker {
           winner: null
         };
 
-        // Инициализация позиций для квадратиков
+        // Инициализируем позиции для игр, где нужны координаты
         Object.keys(playersObj).forEach((pid, idx) => {
           initialGameState.players[pid] = {
             x: 200 + idx * 100,
@@ -109,16 +109,13 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const nickname = this._getNickname();
 
-    console.log(`[Matchmaker] ${this.userId} subscribing to session ${roomId}`);
+    console.log(`[Matchmaker] subscribing to session ${roomId}`);
 
     this.unsubscribeSession = onValue(sessionRef, (snapshot) => {
       const session = snapshot.val();
-      if (!session) {
-        this.cleanup();
-        return;
-      }
+      if (!session) { this.cleanup(); return; }
 
-      console.log(`[Matchmaker] ${this.userId} session updated:`, session);
+      console.log('[Matchmaker] session updated:', session);
 
       if (session.status === 'playing' && this.currentIframe) {
         this.sendToIframe({
@@ -144,7 +141,7 @@ export class Matchmaker {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
-      console.log(`[Matchmaker] ${this.userId} received from iframe:`, data.type);
+      console.log('[Matchmaker] received from iframe:', data.type);
 
       if (data.type === 'iframe_ready') {
         const sessionSnapshot = await get(sessionRef);
@@ -159,14 +156,10 @@ export class Matchmaker {
       else if (data.type === 'player_action') {
         await this.handlePlayerAction(roomId, this.userId, data);
       }
-      else if (data.type === 'state_update') {
-        if (data.gameState) {
-          await update(sessionRef, { gameState: data.gameState });
-        }
-      }
       else if (data.type === 'game_over') {
         this.endGame(roomId, data.winner);
       }
+      // IGNORE state_update from client – server is the only source of truth
     };
     window.addEventListener('message', this.iframeMessageHandler);
 
@@ -190,7 +183,6 @@ export class Matchmaker {
 
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
-    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
 
     try {
@@ -206,14 +198,14 @@ export class Matchmaker {
         }
         if (Object.keys(updates).length > 0) {
           await update(gameStateRef, updates);
-          console.log(`[Matchmaker] ${userId} moved:`, updates);
+          console.log('[Matchmaker] updated move:', updates);
         }
       }
       else if (data.action === 'shoot') {
-        // ... можно оставить как есть
+        // ... (можно оставить как было)
       }
       else if (data.action === 'click') {
-        const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+        const scoreRef = child(gameStateRef, userId);
         await runTransaction(scoreRef, (current) => (current || 0) + 1);
       }
     } catch (error) {
