@@ -77,7 +77,7 @@ export class Matchmaker {
           winner: null
         };
 
-        // Инициализируем позиции для игр, где нужны координаты (test-square)
+        // Инициализируем позиции для игр, где нужны координаты
         Object.keys(playersObj).forEach((pid, idx) => {
           initialGameState.players[pid] = {
             x: 200 + idx * 100,
@@ -109,9 +109,11 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const nickname = this._getNickname();
 
-    this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
+    this.unsubscribeSession = onValue(sessionRef, (snapshot) => {
       const session = snapshot.val();
       if (!session) { this.cleanup(); return; }
+
+      console.log('[Matchmaker] session updated:', session);
 
       if (session.status === 'playing' && this.currentIframe) {
         this.sendToIframe({
@@ -121,7 +123,7 @@ export class Matchmaker {
         });
 
         if (session.gameState && session.gameState.winner) {
-          await this.endGame(roomId, session.gameState.winner);
+          this.endGame(roomId, session.gameState.winner);
         }
       }
     });
@@ -137,6 +139,8 @@ export class Matchmaker {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
+      console.log('[Matchmaker] received from iframe:', data.type);
+
       if (data.type === 'iframe_ready') {
         const sessionSnapshot = await get(sessionRef);
         const sessionData = sessionSnapshot.val() || {};
@@ -149,12 +153,10 @@ export class Matchmaker {
       }
       else if (data.type === 'player_action') {
         await this.handlePlayerAction(roomId, this.userId, data);
-        // После обработки действия рассылаем обновлённое состояние всем игрокам
-        await this.broadcastGameState(roomId);
       }
       else if (data.type === 'state_update') {
         if (data.gameState) {
-          await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
+          await update(sessionRef, { gameState: data.gameState });
         }
       }
       else if (data.type === 'game_over') {
@@ -181,49 +183,32 @@ export class Matchmaker {
     }
   }
 
-  async broadcastGameState(roomId) {
-    // Получаем актуальное состояние из RTDB и отправляем его всем iframe в комнате
-    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
-    const snapshot = await get(sessionRef);
-    if (!snapshot.exists()) return;
-    const session = snapshot.val();
-    const message = {
-      type: 'state_update',
-      gameState: session.gameState || {},
-      players: session.players || {}
-    };
-    // Отправляем текущему игроку
-    this.sendToIframe(message);
-    // TODO: в реальном приложении нужна возможность отправить всем iframe в комнате.
-    // В нашей архитектуре каждый клиент имеет свой Matchmaker и слушает onValue,
-    // поэтому достаточно, чтобы onValue сработал. Но для надёжности оставим отправку текущему.
-    // Второй игрок получит обновление через свой onValue.
-  }
-
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
-    const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
+    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
 
     try {
+      const snapshot = await get(sessionRef);
+      const session = snapshot.val() || {};
+      const gameState = session.gameState || { players: {}, bullets: [] };
+
       if (data.action === 'move') {
-        const updates = {};
+        if (!gameState.players[userId]) gameState.players[userId] = {};
         if (data.px !== undefined) {
-          updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
-          updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
-          updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
+          gameState.players[userId].px = data.px;
+          gameState.players[userId].py = data.py;
+          gameState.players[userId].angle = data.angle;
         } else if (data.x !== undefined) {
-          updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
-          updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
+          gameState.players[userId].x = data.x;
+          gameState.players[userId].y = data.y;
         }
-        await update(ref(this.rtdb), updates);
+        await update(sessionRef, { gameState });
       }
       else if (data.action === 'shoot') {
-        const snap = await get(gameStateRef);
-        const gameState = snap.val() || { players: {}, bullets: [] };
         const player = gameState.players?.[userId];
         if (!player || player.ammo <= 0) return;
 
-        const newAmmo = player.ammo - 1;
+        player.ammo -= 1;
         const angle = player.angle || 0;
         const barrelLength = 24;
         const spawnX = player.px + Math.cos(angle) * barrelLength;
@@ -239,21 +224,21 @@ export class Matchmaker {
           owner: userId,
         };
 
-        const bullets = gameState.bullets || [];
-        bullets.push(bullet);
-        if (bullets.length > 50) bullets.shift();
+        if (!gameState.bullets) gameState.bullets = [];
+        gameState.bullets.push(bullet);
+        if (gameState.bullets.length > 50) gameState.bullets.shift();
 
-        const updates = {};
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
-        updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
-        await update(ref(this.rtdb), updates);
+        await update(sessionRef, { gameState });
       }
       else if (data.action === 'click') {
-        const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
-        await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+        if (typeof gameState[userId] !== 'number') gameState[userId] = 0;
+        gameState[userId] += 1;
+        await update(sessionRef, { gameState });
       }
+
+      console.log('[Matchmaker] updated gameState:', gameState);
     } catch (error) {
-      console.error('Error handling player action:', error);
+      console.error('[Matchmaker] error handling action:', error);
     }
   }
 
