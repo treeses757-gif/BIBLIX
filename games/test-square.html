@@ -63,7 +63,7 @@
     
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
-      console.log('[Square] received:', d.type);
+      console.log('[Square] received:', d.type, d);
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
@@ -79,14 +79,16 @@
           break;
           
         case 'state_update':
-          console.log('[Square] state_update received, gameState:', d.gameState);
+          console.log('[Square] state_update content:', d.gameState);
           gameState = d.gameState || {};
           players = d.players || players;
           if (gameState.players) {
+            // Обновляем свою позицию, если она пришла с сервера
             if (gameState.players[myId]) {
               myPos.x = gameState.players[myId].x;
               myPos.y = gameState.players[myId].y;
             }
+            // Формируем текст статуса
             let txt = `Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
             for (let id in players) {
               if (id === myId) continue;
@@ -159,6 +161,7 @@
       }
     }
     
+    // Джойстик и клавиатура (без изменений)
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
