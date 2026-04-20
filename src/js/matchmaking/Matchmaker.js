@@ -1,5 +1,5 @@
 // src/js/matchmaking/Matchmaker.js
-import { ref, set, onValue, update, remove, serverTimestamp, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
@@ -60,7 +60,6 @@ export class Matchmaker {
         const roomId = `${game.id}_${Date.now()}`;
         this.roomId = roomId;
 
-        // Удаляем игроков из очереди
         const updates = {};
         selectedPlayers.forEach(pid => updates[`matchmaking/${game.id}/queue/${pid}`] = null);
         await update(ref(this.rtdb), updates);
@@ -71,23 +70,24 @@ export class Matchmaker {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
         });
 
-        // Создаём начальное состояние комнаты
-        const initialGameState = {
-          players: {},
-          bullets: [],
-          winner: null,
-          // можно добавить любые другие поля, специфичные для игры
-        };
-
-        // Если это квадратики – задаём начальные координаты
+        // Определяем тип игры
+        const isClicker = game.id.includes('clicker') || (game.localPath && game.localPath.includes('clicker'));
         const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
-        if (isSquare) {
-          Object.keys(playersObj).forEach((pid, idx) => {
-            initialGameState.players[pid] = {
-              x: 200 + idx * 100,
-              y: 200 + idx * 80
-            };
-          });
+
+        let initialGameState;
+        if (isClicker) {
+          initialGameState = {};
+          selectedPlayers.forEach(pid => { initialGameState[pid] = 0; });
+        } else {
+          initialGameState = { players: {}, bullets: [], map: null, winner: null };
+          if (isSquare) {
+            Object.keys(playersObj).forEach((pid, idx) => {
+              initialGameState.players[pid] = {
+                x: 200 + idx * 100,
+                y: 200 + idx * 80
+              };
+            });
+          }
         }
 
         await set(sessionRef, {
@@ -114,21 +114,25 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const nickname = this._getNickname();
 
-    // Подписываемся на изменения комнаты
     this.unsubscribeSession = onValue(sessionRef, (snapshot) => {
       const session = snapshot.val();
       if (!session) { this.cleanup(); return; }
 
-      // Пересылаем состояние в iframe
       this.sendToIframe({
         type: 'state_update',
         gameState: session.gameState || {},
-        players: session.players || {}
+        players: session.players
       });
 
-      // Проверка победы (опционально)
-      if (session.gameState?.winner) {
-        this.sendToIframe({ type: 'game_over', winner: session.gameState.winner });
+      // Проверка победы для кликера
+      const gs = session.gameState;
+      if (gs && !gs.players) {
+        for (const [uid, score] of Object.entries(gs)) {
+          if (score >= 5) {
+            this.endGame(roomId, uid);
+            break;
+          }
+        }
       }
     });
 
@@ -154,7 +158,6 @@ export class Matchmaker {
         });
       }
       else if (data.type === 'player_update') {
-        // Клиент прислал новое состояние своего персонажа
         if (data.playerState) {
           const updates = {};
           updates[`gameSessions/${roomId}/gameState/players/${this.userId}`] = data.playerState;
@@ -162,7 +165,6 @@ export class Matchmaker {
         }
       }
       else if (data.type === 'player_action') {
-        // Обработка специфических действий (выстрел, клик)
         await this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'game_over') {
@@ -190,14 +192,12 @@ export class Matchmaker {
   }
 
   async handlePlayerAction(roomId, userId, data) {
-    // Обрабатываем только те действия, которые не укладываются в player_update
     if (data.action === 'click') {
-      const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/players/${userId}/score`);
-      const snapshot = await get(scoreRef);
-      const current = snapshot.val() || 0;
-      await set(scoreRef, current + 1);
+      const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+      await runTransaction(scoreRef, (current) => (current || 0) + 1);
     }
-    // Выстрелы и т.п. можно добавить аналогично
+    // Здесь можно добавить обработку move и shoot, если клиент их шлёт,
+    // но сейчас квадратики используют player_update, а танки не подключены.
   }
 
   async endGame(roomId, winnerId) {
