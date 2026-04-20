@@ -50,13 +50,12 @@
     canvas.addEventListener('touchstart',()=>canvas.focus(),{passive:false});
     
     let lastUpdateSent=0;
-    const UPDATE_INTERVAL=50; // мс
+    const UPDATE_INTERVAL=50;
 
     function postMessage(type,data={}){ 
       window.parent.postMessage({type,...data},'*');
     }
     
-    // Отправляем своё полное состояние на сервер
     function sendPlayerUpdate(){
       if(!gameActive) return;
       const now=Date.now();
@@ -72,7 +71,6 @@
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
           myId=userId;
           
-          // Берём начальную позицию из gameState.players (сервер уже инициализировал)
           if(gameState.players && gameState.players[myId]){
             myPos.x=gameState.players[myId].x;
             myPos.y=gameState.players[myId].y;
@@ -80,7 +78,6 @@
           
           gameActive=true;
           statusDisplay.textContent=`Вы: ${nickname}`;
-          // Сразу отправляем своё состояние, чтобы сервер точно знал, что мы на месте
           sendPlayerUpdate();
           break;
           
@@ -88,13 +85,11 @@
           gameState=d.gameState||{};
           players=d.players||players;
           
-          // Обновляем свою позицию из состояния (на случай, если сервер её изменил)
           if(gameState.players && gameState.players[myId]){
             myPos.x=gameState.players[myId].x;
             myPos.y=gameState.players[myId].y;
           }
           
-          // Выводим статус (можно закомментировать для производительности)
           let txt=`Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
           for(let id in players){
             if(id===myId) continue;
@@ -124,7 +119,6 @@
       if(dx!==0||dy!==0){
         myPos.x=Math.max(SIZE/2, Math.min(cw-SIZE/2, myPos.x+dx));
         myPos.y=Math.max(SIZE/2, Math.min(ch-SIZE/2, myPos.y+dy));
-        // После изменения позиции сразу шлём обновление
         sendPlayerUpdate();
       }
     }
@@ -133,7 +127,6 @@
       cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
       ctx.clearRect(0,0,cw,ch);
       
-      // Рисуем себя
       ctx.fillStyle='#3a9bdc';
       ctx.fillRect(myPos.x-SIZE/2, myPos.y-SIZE/2, SIZE, SIZE);
       ctx.fillStyle='white';
@@ -141,7 +134,6 @@
       ctx.textAlign='center';
       ctx.fillText(nickname||'Вы', myPos.x, myPos.y-30);
       
-      // Рисуем соперников
       if(gameState.players){
         for(let id in gameState.players){
           if(id===myId) continue;
@@ -155,7 +147,6 @@
       }
     }
     
-    // Джойстик и клавиатура
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
@@ -189,7 +180,6 @@
     function loop(){
       if(gameActive){
         moveLocal();
-        // Дополнительно шлём обновление каждый кадр (но с троттлингом внутри sendPlayerUpdate)
         sendPlayerUpdate();
       }
       draw();
