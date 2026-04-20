@@ -10,12 +10,24 @@ const BUILT_IN_GAMES = [
     authorNickname: 'BIBLIX',
     authorUid: 'system',
     avatarUrl: '🎮',
-    localPath: '/BIBLIX/games/clicker2p.html',   // ← путь для GitHub Pages
+    localPath: '/BIBLIX/games/clicker2p.html',
     likes: 100,
     dislikes: 0,
     createdAt: new Date()
+  },
+  {
+    id: 'builtin_test_square',
+    title: '🟦 Тест квадратики 2P',
+    players: 2,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🟦',
+    localPath: '/BIBLIX/games/test-square.html',
+    likes: 0,
+    dislikes: 0,
+    createdAt: new Date()
   }
-  // Добавляйте новые игры сюда
+  // Добавляйте новые встроенные игры сюда
 ];
 
 export class UIManager {
