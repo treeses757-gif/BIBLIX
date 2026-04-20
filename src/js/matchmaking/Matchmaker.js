@@ -66,11 +66,32 @@ export class Matchmaker {
 
         const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
         const playersObj = {};
-        const initialGameState = {};
         selectedPlayers.forEach(pid => {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
-          initialGameState[pid] = 0;
         });
+
+        // Определяем тип игры по id или по наличию localPath/htmlContent
+        const isClicker = game.id.includes('clicker') || (game.localPath && game.localPath.includes('clicker'));
+        const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
+
+        let initialGameState;
+        if (isClicker) {
+          // Для кликера – счёт хранится прямо в gameState[userId]
+          initialGameState = {};
+          selectedPlayers.forEach(pid => { initialGameState[pid] = 0; });
+        } else {
+          // Для квадратиков и танчиков – players с координатами
+          initialGameState = { players: {}, bullets: [], map: null, winner: null };
+          if (isSquare) {
+            // Инициализируем начальные позиции для квадратиков
+            Object.keys(playersObj).forEach((pid, idx) => {
+              initialGameState.players[pid] = {
+                x: 200 + idx * 100,
+                y: 200 + idx * 80
+              };
+            });
+          }
+        }
 
         await set(sessionRef, {
           gameId: game.id,
@@ -101,15 +122,23 @@ export class Matchmaker {
       if (!session) { this.cleanup(); return; }
 
       if (session.status === 'playing' && this.currentIframe) {
-        this.sendToIframe({ type: 'state_update', gameState: session.gameState, players: session.players });
+        this.sendToIframe({
+          type: 'state_update',
+          gameState: session.gameState || {},
+          players: session.players
+        });
 
-        const gameState = session.gameState;
-        for (const [uid, score] of Object.entries(gameState)) {
-          if (score >= 5) {
-            await this.endGame(roomId, uid);
-            break;
+        // Проверка победы для кликера
+        const gs = session.gameState;
+        if (gs && !gs.players) { // значит кликер
+          for (const [uid, score] of Object.entries(gs)) {
+            if (score >= 5) {
+              await this.endGame(roomId, uid);
+              break;
+            }
           }
         }
+        // Для квадратиков победа не реализована, можно добавить позже
       }
     });
 
@@ -135,7 +164,13 @@ export class Matchmaker {
         });
       }
       else if (data.type === 'player_action') {
-        this.handlePlayerAction(roomId, this.userId, data);
+        await this.handlePlayerAction(roomId, this.userId, data);
+        // Принудительно рассылаем обновление всем (через RTDB onValue сработает автоматически)
+      }
+      else if (data.type === 'state_update') {
+        if (data.gameState) {
+          await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
+        }
       }
       else if (data.type === 'game_over') {
         this.endGame(roomId, data.winner);
@@ -161,10 +196,59 @@ export class Matchmaker {
     }
   }
 
-  async handlePlayerAction(roomId, userId) {
+  async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
-    const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
-    await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+    const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
+
+    if (data.action === 'click') {
+      const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+      await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+    }
+    else if (data.action === 'move') {
+      const updates = {};
+      if (data.x !== undefined) {
+        // квадратики
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
+      } else if (data.px !== undefined) {
+        // танчики
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
+      }
+      await update(ref(this.rtdb), updates);
+    }
+    else if (data.action === 'shoot') {
+      const snap = await get(gameStateRef);
+      const gameState = snap.val() || { players: {}, bullets: [] };
+      const player = gameState.players?.[userId];
+      if (!player || player.ammo <= 0) return;
+
+      const newAmmo = player.ammo - 1;
+      const angle = player.angle || 0;
+      const barrelLength = 24;
+      const spawnX = player.px + Math.cos(angle) * barrelLength;
+      const spawnY = player.py + Math.sin(angle) * barrelLength;
+      const BULLET_SPEED = 6;
+      const vx = Math.cos(angle) * BULLET_SPEED;
+      const vy = Math.sin(angle) * BULLET_SPEED;
+
+      const bullet = {
+        id: Date.now() + '_' + Math.random(),
+        x: spawnX, y: spawnY,
+        vx, vy,
+        owner: userId,
+      };
+
+      const bullets = gameState.bullets || [];
+      bullets.push(bullet);
+      if (bullets.length > 50) bullets.shift();
+
+      const updates = {};
+      updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
+      updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
+      await update(ref(this.rtdb), updates);
+    }
   }
 
   async endGame(roomId, winnerId) {
