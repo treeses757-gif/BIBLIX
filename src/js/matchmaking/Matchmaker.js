@@ -1,5 +1,5 @@
 // src/js/matchmaking/Matchmaker.js
-import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get, child } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
@@ -77,7 +77,7 @@ export class Matchmaker {
           winner: null
         };
 
-        // Инициализируем позиции для игр, где нужны координаты
+        // Инициализируем позиции для игр, где нужны координаты (test-square)
         Object.keys(playersObj).forEach((pid, idx) => {
           initialGameState.players[pid] = {
             x: 200 + idx * 100,
@@ -109,23 +109,19 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const nickname = this._getNickname();
 
-    console.log(`[Matchmaker] subscribing to session ${roomId}`);
-
-    this.unsubscribeSession = onValue(sessionRef, (snapshot) => {
+    this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
       const session = snapshot.val();
       if (!session) { this.cleanup(); return; }
-
-      console.log('[Matchmaker] session updated:', session);
 
       if (session.status === 'playing' && this.currentIframe) {
         this.sendToIframe({
           type: 'state_update',
           gameState: session.gameState || {},
-          players: session.players || {}
+          players: session.players
         });
 
         if (session.gameState && session.gameState.winner) {
-          this.endGame(roomId, session.gameState.winner);
+          await this.endGame(roomId, session.gameState.winner);
         }
       }
     });
@@ -141,8 +137,6 @@ export class Matchmaker {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
-      console.log('[Matchmaker] received from iframe:', data.type);
-
       if (data.type === 'iframe_ready') {
         const sessionSnapshot = await get(sessionRef);
         const sessionData = sessionSnapshot.val() || {};
@@ -155,11 +149,17 @@ export class Matchmaker {
       }
       else if (data.type === 'player_action') {
         await this.handlePlayerAction(roomId, this.userId, data);
+        // После обработки действия рассылаем обновлённое состояние всем игрокам
+        await this.broadcastGameState(roomId);
+      }
+      else if (data.type === 'state_update') {
+        if (data.gameState) {
+          await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
+        }
       }
       else if (data.type === 'game_over') {
         this.endGame(roomId, data.winner);
       }
-      // IGNORE state_update from client – server is the only source of truth
     };
     window.addEventListener('message', this.iframeMessageHandler);
 
@@ -181,6 +181,25 @@ export class Matchmaker {
     }
   }
 
+  async broadcastGameState(roomId) {
+    // Получаем актуальное состояние из RTDB и отправляем его всем iframe в комнате
+    const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
+    const snapshot = await get(sessionRef);
+    if (!snapshot.exists()) return;
+    const session = snapshot.val();
+    const message = {
+      type: 'state_update',
+      gameState: session.gameState || {},
+      players: session.players || {}
+    };
+    // Отправляем текущему игроку
+    this.sendToIframe(message);
+    // TODO: в реальном приложении нужна возможность отправить всем iframe в комнате.
+    // В нашей архитектуре каждый клиент имеет свой Matchmaker и слушает onValue,
+    // поэтому достаточно, чтобы onValue сработал. Но для надёжности оставим отправку текущему.
+    // Второй игрок получит обновление через свой onValue.
+  }
+
   async handlePlayerAction(roomId, userId, data) {
     if (!roomId || !userId) return;
     const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
@@ -189,27 +208,52 @@ export class Matchmaker {
       if (data.action === 'move') {
         const updates = {};
         if (data.px !== undefined) {
-          updates[`players/${userId}/px`] = data.px;
-          updates[`players/${userId}/py`] = data.py;
-          updates[`players/${userId}/angle`] = data.angle;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
         } else if (data.x !== undefined) {
-          updates[`players/${userId}/x`] = data.x;
-          updates[`players/${userId}/y`] = data.y;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
         }
-        if (Object.keys(updates).length > 0) {
-          await update(gameStateRef, updates);
-          console.log('[Matchmaker] updated move:', updates);
-        }
+        await update(ref(this.rtdb), updates);
       }
       else if (data.action === 'shoot') {
-        // ... (можно оставить как было)
+        const snap = await get(gameStateRef);
+        const gameState = snap.val() || { players: {}, bullets: [] };
+        const player = gameState.players?.[userId];
+        if (!player || player.ammo <= 0) return;
+
+        const newAmmo = player.ammo - 1;
+        const angle = player.angle || 0;
+        const barrelLength = 24;
+        const spawnX = player.px + Math.cos(angle) * barrelLength;
+        const spawnY = player.py + Math.sin(angle) * barrelLength;
+        const BULLET_SPEED = 6;
+        const vx = Math.cos(angle) * BULLET_SPEED;
+        const vy = Math.sin(angle) * BULLET_SPEED;
+
+        const bullet = {
+          id: Date.now() + '_' + Math.random(),
+          x: spawnX, y: spawnY,
+          vx, vy,
+          owner: userId,
+        };
+
+        const bullets = gameState.bullets || [];
+        bullets.push(bullet);
+        if (bullets.length > 50) bullets.shift();
+
+        const updates = {};
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
+        updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
+        await update(ref(this.rtdb), updates);
       }
       else if (data.action === 'click') {
-        const scoreRef = child(gameStateRef, userId);
-        await runTransaction(scoreRef, (current) => (current || 0) + 1);
+        const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
+        await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
       }
     } catch (error) {
-      console.error('[Matchmaker] error handling action:', error);
+      console.error('Error handling player action:', error);
     }
   }
 
