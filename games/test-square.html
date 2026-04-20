@@ -49,11 +49,20 @@
     canvas.addEventListener('click',()=>canvas.focus());
     canvas.addEventListener('touchstart',()=>canvas.focus(),{passive:false});
     
-    let lastMoveSent=0;
-    const MOVE_THROTTLE=30;
+    let lastUpdateSent=0;
+    const UPDATE_INTERVAL=50; // мс
 
     function postMessage(type,data={}){ 
       window.parent.postMessage({type,...data},'*');
+    }
+    
+    // Отправляем своё полное состояние на сервер
+    function sendPlayerUpdate(){
+      if(!gameActive) return;
+      const now=Date.now();
+      if(now-lastUpdateSent<UPDATE_INTERVAL) return;
+      lastUpdateSent=now;
+      postMessage('player_update', { playerState: { x: myPos.x, y: myPos.y } });
     }
     
     window.addEventListener('message',(e)=>{
@@ -63,90 +72,85 @@
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
           myId=userId;
           
-          // Получаем начальную позицию от сервера
-          if (gameState.players && gameState.players[myId]) {
-            myPos.x = gameState.players[myId].x;
-            myPos.y = gameState.players[myId].y;
+          // Берём начальную позицию из gameState.players (сервер уже инициализировал)
+          if(gameState.players && gameState.players[myId]){
+            myPos.x=gameState.players[myId].x;
+            myPos.y=gameState.players[myId].y;
           }
           
-          gameActive = true;
-          statusDisplay.textContent = `Вы: ${nickname}`;
+          gameActive=true;
+          statusDisplay.textContent=`Вы: ${nickname}`;
+          // Сразу отправляем своё состояние, чтобы сервер точно знал, что мы на месте
+          sendPlayerUpdate();
           break;
           
         case 'state_update':
-          gameState = d.gameState || {};
-          players = d.players || players;
-          if (gameState.players && gameState.players[myId]) {
-            myPos.x = gameState.players[myId].x;
-            myPos.y = gameState.players[myId].y;
+          gameState=d.gameState||{};
+          players=d.players||players;
+          
+          // Обновляем свою позицию из состояния (на случай, если сервер её изменил)
+          if(gameState.players && gameState.players[myId]){
+            myPos.x=gameState.players[myId].x;
+            myPos.y=gameState.players[myId].y;
           }
-          let txt = `Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
-          for (let id in players) {
-            if (id === myId) continue;
-            const p = gameState.players?.[id];
-            if (p) txt += `${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
+          
+          // Выводим статус (можно закомментировать для производительности)
+          let txt=`Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
+          for(let id in players){
+            if(id===myId) continue;
+            const p=gameState.players?.[id];
+            if(p) txt+=`${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
           }
-          statusDisplay.textContent = txt;
+          statusDisplay.textContent=txt;
           break;
           
         case 'game_over':
-          gameActive = false;
-          statusDisplay.textContent = 'Игра окончена';
+          gameActive=false;
+          statusDisplay.textContent='Игра окончена';
           break;
       }
     });
     
-    function sendMove(){
-      if (!gameActive) return;
-      const now = Date.now();
-      if (now - lastMoveSent < MOVE_THROTTLE) return;
-      lastMoveSent = now;
-      postMessage('player_action', { action: 'move', x: myPos.x, y: myPos.y });
-    }
-    
     function moveLocal(){
-      if (!gameActive) return;
-      let dx=0, dy=0; const speed=3;
-      if (joystickActive) {
-        const len = Math.hypot(joystickVector.x, joystickVector.y);
-        if (len > 0.2) {
-          dx = (joystickVector.x / len) * speed;
-          dy = (joystickVector.y / len) * speed;
-        }
-      } else if (!isMobile) {
-        if (moveUp) dy = -speed;
-        if (moveDown) dy = speed;
-        if (moveLeft) dx = -speed;
-        if (moveRight) dx = speed;
+      if(!gameActive) return;
+      let dx=0,dy=0; const speed=3;
+      if(joystickActive){
+        const len=Math.hypot(joystickVector.x,joystickVector.y);
+        if(len>0.2){ dx=(joystickVector.x/len)*speed; dy=(joystickVector.y/len)*speed; }
+      }else if(!isMobile){
+        if(moveUp) dy=-speed; if(moveDown) dy=speed;
+        if(moveLeft) dx=-speed; if(moveRight) dx=speed;
       }
-      if (dx !== 0 || dy !== 0) {
-        myPos.x = Math.max(SIZE/2, Math.min(cw - SIZE/2, myPos.x + dx));
-        myPos.y = Math.max(SIZE/2, Math.min(ch - SIZE/2, myPos.y + dy));
-        sendMove();
+      if(dx!==0||dy!==0){
+        myPos.x=Math.max(SIZE/2, Math.min(cw-SIZE/2, myPos.x+dx));
+        myPos.y=Math.max(SIZE/2, Math.min(ch-SIZE/2, myPos.y+dy));
+        // После изменения позиции сразу шлём обновление
+        sendPlayerUpdate();
       }
     }
     
     function draw(){
-      cw = canvas.width = window.innerWidth;
-      ch = canvas.height = window.innerHeight;
-      ctx.clearRect(0, 0, cw, ch);
+      cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
+      ctx.clearRect(0,0,cw,ch);
       
-      ctx.fillStyle = '#3a9bdc';
-      ctx.fillRect(myPos.x - SIZE/2, myPos.y - SIZE/2, SIZE, SIZE);
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 14px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(nickname || 'Вы', myPos.x, myPos.y - 30);
+      // Рисуем себя
+      ctx.fillStyle='#3a9bdc';
+      ctx.fillRect(myPos.x-SIZE/2, myPos.y-SIZE/2, SIZE, SIZE);
+      ctx.fillStyle='white';
+      ctx.font='bold 14px Arial';
+      ctx.textAlign='center';
+      ctx.fillText(nickname||'Вы', myPos.x, myPos.y-30);
       
-      if (gameState.players) {
-        for (let id in gameState.players) {
-          if (id === myId) continue;
-          const p = gameState.players[id];
-          if (!p || typeof p.x !== 'number') continue;
-          ctx.fillStyle = '#e94560';
-          ctx.fillRect(p.x - SIZE/2, p.y - SIZE/2, SIZE, SIZE);
-          ctx.fillStyle = 'white';
-          ctx.fillText(players[id]?.nickname || id, p.x, p.y - 30);
+      // Рисуем соперников
+      if(gameState.players){
+        for(let id in gameState.players){
+          if(id===myId) continue;
+          const p=gameState.players[id];
+          if(!p||typeof p.x!=='number') continue;
+          ctx.fillStyle='#e94560';
+          ctx.fillRect(p.x-SIZE/2, p.y-SIZE/2, SIZE, SIZE);
+          ctx.fillStyle='white';
+          ctx.fillText(players[id]?.nickname||id, p.x, p.y-30);
         }
       }
     }
@@ -183,7 +187,11 @@
     canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
     
     function loop(){
-      if(gameActive) moveLocal();
+      if(gameActive){
+        moveLocal();
+        // Дополнительно шлём обновление каждый кадр (но с троттлингом внутри sendPlayerUpdate)
+        sendPlayerUpdate();
+      }
       draw();
       requestAnimationFrame(loop);
     }
