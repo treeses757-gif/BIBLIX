@@ -1,5 +1,5 @@
 // src/js/matchmaking/Matchmaker.js
-import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, onValue, update, remove, serverTimestamp, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
@@ -60,6 +60,7 @@ export class Matchmaker {
         const roomId = `${game.id}_${Date.now()}`;
         this.roomId = roomId;
 
+        // Удаляем игроков из очереди
         const updates = {};
         selectedPlayers.forEach(pid => updates[`matchmaking/${game.id}/queue/${pid}`] = null);
         await update(ref(this.rtdb), updates);
@@ -70,27 +71,23 @@ export class Matchmaker {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
         });
 
-        // Определяем тип игры по id или по наличию localPath/htmlContent
-        const isClicker = game.id.includes('clicker') || (game.localPath && game.localPath.includes('clicker'));
-        const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
+        // Создаём начальное состояние комнаты
+        const initialGameState = {
+          players: {},
+          bullets: [],
+          winner: null,
+          // можно добавить любые другие поля, специфичные для игры
+        };
 
-        let initialGameState;
-        if (isClicker) {
-          // Для кликера – счёт хранится прямо в gameState[userId]
-          initialGameState = {};
-          selectedPlayers.forEach(pid => { initialGameState[pid] = 0; });
-        } else {
-          // Для квадратиков и танчиков – players с координатами
-          initialGameState = { players: {}, bullets: [], map: null, winner: null };
-          if (isSquare) {
-            // Инициализируем начальные позиции для квадратиков
-            Object.keys(playersObj).forEach((pid, idx) => {
-              initialGameState.players[pid] = {
-                x: 200 + idx * 100,
-                y: 200 + idx * 80
-              };
-            });
-          }
+        // Если это квадратики – задаём начальные координаты
+        const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
+        if (isSquare) {
+          Object.keys(playersObj).forEach((pid, idx) => {
+            initialGameState.players[pid] = {
+              x: 200 + idx * 100,
+              y: 200 + idx * 80
+            };
+          });
         }
 
         await set(sessionRef, {
@@ -117,28 +114,21 @@ export class Matchmaker {
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
     const nickname = this._getNickname();
 
-    this.unsubscribeSession = onValue(sessionRef, async (snapshot) => {
+    // Подписываемся на изменения комнаты
+    this.unsubscribeSession = onValue(sessionRef, (snapshot) => {
       const session = snapshot.val();
       if (!session) { this.cleanup(); return; }
 
-      if (session.status === 'playing' && this.currentIframe) {
-        this.sendToIframe({
-          type: 'state_update',
-          gameState: session.gameState || {},
-          players: session.players
-        });
+      // Пересылаем состояние в iframe
+      this.sendToIframe({
+        type: 'state_update',
+        gameState: session.gameState || {},
+        players: session.players || {}
+      });
 
-        // Проверка победы для кликера
-        const gs = session.gameState;
-        if (gs && !gs.players) { // значит кликер
-          for (const [uid, score] of Object.entries(gs)) {
-            if (score >= 5) {
-              await this.endGame(roomId, uid);
-              break;
-            }
-          }
-        }
-        // Для квадратиков победа не реализована, можно добавить позже
+      // Проверка победы (опционально)
+      if (session.gameState?.winner) {
+        this.sendToIframe({ type: 'game_over', winner: session.gameState.winner });
       }
     });
 
@@ -163,14 +153,17 @@ export class Matchmaker {
           players: sessionData.players || {}
         });
       }
-      else if (data.type === 'player_action') {
-        await this.handlePlayerAction(roomId, this.userId, data);
-        // Принудительно рассылаем обновление всем (через RTDB onValue сработает автоматически)
-      }
-      else if (data.type === 'state_update') {
-        if (data.gameState) {
-          await update(ref(this.rtdb, `gameSessions/${roomId}`), { gameState: data.gameState });
+      else if (data.type === 'player_update') {
+        // Клиент прислал новое состояние своего персонажа
+        if (data.playerState) {
+          const updates = {};
+          updates[`gameSessions/${roomId}/gameState/players/${this.userId}`] = data.playerState;
+          await update(ref(this.rtdb), updates);
         }
+      }
+      else if (data.type === 'player_action') {
+        // Обработка специфических действий (выстрел, клик)
+        await this.handlePlayerAction(roomId, this.userId, data);
       }
       else if (data.type === 'game_over') {
         this.endGame(roomId, data.winner);
@@ -197,64 +190,20 @@ export class Matchmaker {
   }
 
   async handlePlayerAction(roomId, userId, data) {
-    if (!roomId || !userId) return;
-    const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
-
+    // Обрабатываем только те действия, которые не укладываются в player_update
     if (data.action === 'click') {
-      const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
-      await runTransaction(scoreRef, (currentScore) => (currentScore || 0) + 1);
+      const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/players/${userId}/score`);
+      const snapshot = await get(scoreRef);
+      const current = snapshot.val() || 0;
+      await set(scoreRef, current + 1);
     }
-    else if (data.action === 'move') {
-      const updates = {};
-      if (data.x !== undefined) {
-        // квадратики
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
-      } else if (data.px !== undefined) {
-        // танчики
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
-      }
-      await update(ref(this.rtdb), updates);
-    }
-    else if (data.action === 'shoot') {
-      const snap = await get(gameStateRef);
-      const gameState = snap.val() || { players: {}, bullets: [] };
-      const player = gameState.players?.[userId];
-      if (!player || player.ammo <= 0) return;
-
-      const newAmmo = player.ammo - 1;
-      const angle = player.angle || 0;
-      const barrelLength = 24;
-      const spawnX = player.px + Math.cos(angle) * barrelLength;
-      const spawnY = player.py + Math.sin(angle) * barrelLength;
-      const BULLET_SPEED = 6;
-      const vx = Math.cos(angle) * BULLET_SPEED;
-      const vy = Math.sin(angle) * BULLET_SPEED;
-
-      const bullet = {
-        id: Date.now() + '_' + Math.random(),
-        x: spawnX, y: spawnY,
-        vx, vy,
-        owner: userId,
-      };
-
-      const bullets = gameState.bullets || [];
-      bullets.push(bullet);
-      if (bullets.length > 50) bullets.shift();
-
-      const updates = {};
-      updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
-      updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
-      await update(ref(this.rtdb), updates);
-    }
+    // Выстрелы и т.п. можно добавить аналогично
   }
 
   async endGame(roomId, winnerId) {
     if (!roomId) return;
     const sessionRef = ref(this.rtdb, `gameSessions/${roomId}`);
-    await update(sessionRef, { status: 'ended', winner: winnerId });
+    await update(sessionRef, { status: 'ended', 'gameState/winner': winnerId });
     this.sendToIframe({ type: 'game_over', winner: winnerId });
     setTimeout(() => remove(sessionRef), 5000);
     if (winnerId === this.userId) {
