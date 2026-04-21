@@ -25,6 +25,30 @@ const BUILT_IN_GAMES = [
     likes: 0,
     dislikes: 0,
     createdAt: new Date()
+  },
+  {
+    id: 'builtin_tanks2p',
+    title: '🟥 Танчики · 2P',
+    players: 2,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🎮',
+    localPath: '/BIBLIX/games/tanks-2p.html',
+    likes: 150,
+    dislikes: 0,
+    createdAt: new Date()
+  },
+  {
+    id: 'builtin_tanks3p',
+    title: '🟨 Танчики · 3P',
+    players: 3,
+    authorNickname: 'BIBLIX',
+    authorUid: 'system',
+    avatarUrl: '🎮',
+    localPath: '/BIBLIX/games/tanks-3p.html',
+    likes: 120,
+    dislikes: 0,
+    createdAt: new Date()
   }
 ];
 
