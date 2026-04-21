@@ -23,12 +23,30 @@ export class Matchmaker {
   _getUserId() {
     const user = this.auth.currentUser;
     if (user) return user.uid || user.id || user.nickname_lower;
-    let guestId = localStorage.getItem('biblix_guest_id');
-    if (!guestId) {
-      guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('biblix_guest_id', guestId);
+
+    let storageAvailable = false;
+    try {
+      const test = '__storage_test__';
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      storageAvailable = true;
+    } catch (e) {}
+
+    if (storageAvailable) {
+      let guestId = localStorage.getItem('biblix_guest_id');
+      if (!guestId) {
+        guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('biblix_guest_id', guestId);
+      }
+      return guestId;
+    } else {
+      let guestId = sessionStorage.getItem('biblix_guest_id');
+      if (!guestId) {
+        guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem('biblix_guest_id', guestId);
+      }
+      return guestId;
     }
-    return guestId;
   }
 
   _getNickname() {
@@ -70,7 +88,6 @@ export class Matchmaker {
           playersObj[pid] = { nickname: queue[pid].nickname, ready: true };
         });
 
-        // Определяем тип игры
         const isClicker = game.id.includes('clicker') || (game.localPath && game.localPath.includes('clicker'));
         const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
 
@@ -124,7 +141,6 @@ export class Matchmaker {
         players: session.players
       });
 
-      // Проверка победы для кликера
       const gs = session.gameState;
       if (gs && !gs.players) {
         for (const [uid, score] of Object.entries(gs)) {
@@ -196,8 +212,6 @@ export class Matchmaker {
       const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
       await runTransaction(scoreRef, (current) => (current || 0) + 1);
     }
-    // Здесь можно добавить обработку move и shoot, если клиент их шлёт,
-    // но сейчас квадратики используют player_update, а танки не подключены.
   }
 
   async endGame(roomId, winnerId) {
