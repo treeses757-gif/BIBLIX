@@ -1,7 +1,6 @@
 // src/js/ui/UIManager.js
 import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
-// Встроенные игры (локальные файлы в папке /games/)
 const BUILT_IN_GAMES = [
   {
     id: 'builtin_clicker2p',
@@ -27,7 +26,6 @@ const BUILT_IN_GAMES = [
     dislikes: 0,
     createdAt: new Date()
   }
-  // Добавляйте новые встроенные игры сюда
 ];
 
 export class UIManager {
@@ -163,7 +161,8 @@ export class UIManager {
   createGameCard(game) {
     const players = game.players || 1;
     let avatar = game.avatarUrl;
-    if (!avatar || avatar === '🎮') {
+    const isValidUrl = avatar && (avatar.startsWith('http') || avatar.startsWith('data:') || avatar.startsWith('/'));
+    if (!isValidUrl) {
       avatar = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%231e1e2e\'/%3E%3Ctext x=\'50\' y=\'60\' font-size=\'50\' text-anchor=\'middle\' fill=\'%23aaa\'%3E🎮%3C/text%3E%3C/svg%3E';
     }
     return `
