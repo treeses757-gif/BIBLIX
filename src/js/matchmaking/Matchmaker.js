@@ -1,6 +1,58 @@
 // src/js/matchmaking/Matchmaker.js
 import { ref, set, onValue, update, remove, serverTimestamp, runTransaction, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
+// Константы для танчиков
+const TILE_SIZE = 40;
+const MAP_WIDTH = 31;
+const MAP_HEIGHT = 21;
+
+// Генерация карты (как в клиенте)
+function generateMap() {
+  let m = Array(MAP_HEIGHT).fill().map(() => Array(MAP_WIDTH).fill(0));
+  // Границы
+  for (let x = 0; x < MAP_WIDTH; x++) { m[0][x] = 1; m[MAP_HEIGHT-1][x] = 1; }
+  for (let y = 0; y < MAP_HEIGHT; y++) { m[y][0] = 1; m[y][MAP_WIDTH-1] = 1; }
+  // Случайные кирпичи
+  const brickCount = 80 + Math.floor(Math.random() * 60);
+  for (let i = 0; i < brickCount; i++) {
+    let x = Math.floor(Math.random() * (MAP_WIDTH-2)) + 1;
+    let y = Math.floor(Math.random() * (MAP_HEIGHT-2)) + 1;
+    // Не затираем стартовые зоны
+    if ((x===4 && y===4) || (x===5 && y===4) || (x===4 && y===5)) continue;
+    if ((x===MAP_WIDTH-5 && y===MAP_HEIGHT-5) || (x===MAP_WIDTH-6 && y===MAP_HEIGHT-5)) continue;
+    if ((x===MAP_WIDTH-5 && y===4) || (x===MAP_WIDTH-6 && y===4)) continue;
+    m[y][x] = 1;
+  }
+  // Очищаем стартовые зоны (2x2)
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    let nx = 4+dx, ny = 4+dy; if (nx>=1 && nx<MAP_WIDTH-1 && ny>=1 && ny<MAP_HEIGHT-1) m[ny][nx] = 0;
+    nx = MAP_WIDTH-5+dx; ny = MAP_HEIGHT-5+dy; if (nx>=1 && nx<MAP_WIDTH-1 && ny>=1 && ny<MAP_HEIGHT-1) m[ny][nx] = 0;
+    nx = MAP_WIDTH-5+dx; ny = 4+dy; if (nx>=1 && nx<MAP_WIDTH-1 && ny>=1 && ny<MAP_HEIGHT-1) m[ny][nx] = 0;
+  }
+  return m;
+}
+
+// Проверка столкновения с картой
+function tileAtPixel(px, py, map) {
+  if (!map) return 1;
+  const tx = Math.floor(px / TILE_SIZE);
+  const ty = Math.floor(py / TILE_SIZE);
+  if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) return 1;
+  return map[ty][tx];
+}
+
+function canMoveTo(px, py, map, players, excludeId) {
+  const half = TILE_SIZE/2 - 2;
+  const corners = [[px-half, py-half], [px+half, py-half], [px-half, py+half], [px+half, py+half]];
+  for (let c of corners) if (tileAtPixel(c[0], c[1], map) === 1) return false;
+  for (let id in players) {
+    if (id === excludeId) continue;
+    const o = players[id];
+    if (Math.hypot(px - o.px, py - o.py) < TILE_SIZE) return false;
+  }
+  return true;
+}
+
 export class Matchmaker {
   constructor(rtdb, db, auth, gameLauncher) {
     this.rtdb = rtdb;
@@ -23,30 +75,12 @@ export class Matchmaker {
   _getUserId() {
     const user = this.auth.currentUser;
     if (user) return user.uid || user.id || user.nickname_lower;
-
-    let storageAvailable = false;
-    try {
-      const test = '__storage_test__';
-      localStorage.setItem(test, test);
-      localStorage.removeItem(test);
-      storageAvailable = true;
-    } catch (e) {}
-
-    if (storageAvailable) {
-      let guestId = localStorage.getItem('biblix_guest_id');
-      if (!guestId) {
-        guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('biblix_guest_id', guestId);
-      }
-      return guestId;
-    } else {
-      let guestId = sessionStorage.getItem('biblix_guest_id');
-      if (!guestId) {
-        guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        sessionStorage.setItem('biblix_guest_id', guestId);
-      }
-      return guestId;
+    let guestId = localStorage.getItem('biblix_guest_id');
+    if (!guestId) {
+      guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('biblix_guest_id', guestId);
     }
+    return guestId;
   }
 
   _getNickname() {
@@ -90,6 +124,7 @@ export class Matchmaker {
 
         const isClicker = game.id.includes('clicker') || (game.localPath && game.localPath.includes('clicker'));
         const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
+        const isTanks = game.id.includes('tanks') || (game.localPath && game.localPath.includes('tanks'));
 
         let initialGameState;
         if (isClicker) {
@@ -97,12 +132,22 @@ export class Matchmaker {
           selectedPlayers.forEach(pid => { initialGameState[pid] = 0; });
         } else {
           initialGameState = { players: {}, bullets: [], map: null, winner: null };
-          if (isSquare) {
+          if (isTanks) {
+            initialGameState.map = generateMap();
             Object.keys(playersObj).forEach((pid, idx) => {
+              let sx, sy;
+              if (idx === 0) { sx = 4 * TILE_SIZE + TILE_SIZE/2; sy = 4 * TILE_SIZE + TILE_SIZE/2; }
+              else if (idx === 1) { sx = (MAP_WIDTH-5) * TILE_SIZE + TILE_SIZE/2; sy = (MAP_HEIGHT-5) * TILE_SIZE + TILE_SIZE/2; }
+              else { sx = (MAP_WIDTH-5) * TILE_SIZE + TILE_SIZE/2; sy = 4 * TILE_SIZE + TILE_SIZE/2; }
               initialGameState.players[pid] = {
-                x: 200 + idx * 100,
-                y: 200 + idx * 80
+                px: sx, py: sy, angle: 0,
+                lives: 3, ammo: 5,
+                colorIndex: idx
               };
+            });
+          } else if (isSquare) {
+            Object.keys(playersObj).forEach((pid, idx) => {
+              initialGameState.players[pid] = { x: 200 + idx * 100, y: 200 + idx * 80 };
             });
           }
         }
@@ -212,6 +257,100 @@ export class Matchmaker {
       const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
       await runTransaction(scoreRef, (current) => (current || 0) + 1);
     }
+    else if (data.action === 'move') {
+      const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
+      const snap = await get(gameStateRef);
+      const gs = snap.val() || { players: {}, bullets: [], map: null };
+      const player = gs.players[userId];
+      if (!player) return;
+
+      if (data.x !== undefined) {
+        // квадратики (просто сохраняем)
+        const updates = {};
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
+        updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
+        await update(ref(this.rtdb), updates);
+      } else if (data.px !== undefined) {
+        // танчики: проверяем коллизию
+        if (canMoveTo(data.px, data.py, gs.map, gs.players, userId)) {
+          const updates = {};
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/px`] = data.px;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/py`] = data.py;
+          updates[`gameSessions/${roomId}/gameState/players/${userId}/angle`] = data.angle;
+          await update(ref(this.rtdb), updates);
+        }
+      }
+    }
+    else if (data.action === 'shoot') {
+      const gameStateRef = ref(this.rtdb, `gameSessions/${roomId}/gameState`);
+      const snap = await get(gameStateRef);
+      const gs = snap.val() || { players: {}, bullets: [], map: null };
+      const player = gs.players[userId];
+      if (!player || player.ammo <= 0) return;
+
+      const newAmmo = player.ammo - 1;
+      const angle = player.angle || 0;
+      const barrelLength = 24;
+      const spawnX = player.px + Math.cos(angle) * barrelLength;
+      const spawnY = player.py + Math.sin(angle) * barrelLength;
+      const BULLET_SPEED = 6;
+      const vx = Math.cos(angle) * BULLET_SPEED;
+      const vy = Math.sin(angle) * BULLET_SPEED;
+
+      const bullet = {
+        id: Date.now() + '_' + Math.random(),
+        x: spawnX, y: spawnY,
+        vx, vy,
+        owner: userId,
+      };
+
+      const bullets = gs.bullets || [];
+      bullets.push(bullet);
+      if (bullets.length > 50) bullets.shift();
+
+      // Обработка попаданий (упрощённая)
+      const hitPlayer = this.checkBulletCollision(bullet, gs.players, gs.map, userId);
+      if (hitPlayer) {
+        const hitPlayerRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/players/${hitPlayer}`);
+        const hitSnap = await get(hitPlayerRef);
+        const hitData = hitSnap.val();
+        if (hitData && hitData.lives > 0) {
+          const newLives = hitData.lives - 1;
+          await update(ref(this.rtdb), {
+            [`gameSessions/${roomId}/gameState/players/${hitPlayer}/lives`]: newLives,
+            [`gameSessions/${roomId}/gameState/players/${userId}/ammo`]: newAmmo,
+            [`gameSessions/${roomId}/gameState/bullets`]: bullets.filter(b => b.id !== bullet.id)
+          });
+          if (newLives <= 0) {
+            this.endGame(roomId, userId);
+          }
+          return;
+        }
+      }
+
+      const updates = {};
+      updates[`gameSessions/${roomId}/gameState/players/${userId}/ammo`] = newAmmo;
+      updates[`gameSessions/${roomId}/gameState/bullets`] = bullets;
+      await update(ref(this.rtdb), updates);
+    }
+  }
+
+  checkBulletCollision(bullet, players, map, shooterId) {
+    // Упрощённая проверка: ищем ближайшего игрока, в которого попала пуля
+    for (let id in players) {
+      if (id === shooterId) continue;
+      const p = players[id];
+      if (!p || p.lives <= 0) continue;
+      const dist = Math.hypot(bullet.x - p.px, bullet.y - p.py);
+      if (dist < TILE_SIZE/2) {
+        return id;
+      }
+    }
+    // Проверка столкновения со стенами
+    if (tileAtPixel(bullet.x, bullet.y, map) === 1) {
+      return null; // пуля уничтожается, но это обработается при обновлении bullets (фильтрация)
+    }
+    return null;
   }
 
   async endGame(roomId, winnerId) {
