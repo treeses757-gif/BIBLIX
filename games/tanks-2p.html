@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>🟥 Танчики · 2P (синхр.)</title>
   <style>
-    /* стили как раньше */
     * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
     body { background:#1a1a1a; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:'Segoe UI',Arial,sans-serif; touch-action:pan-y; position:fixed; width:100%; height:100%; }
     .game-container { width:100%; height:100vh; display:flex; flex-direction:column; position:relative; background:#2a2a2a; }
@@ -47,9 +46,13 @@
     let cw,ch;
     let roomId=null, userId=null, nickname='', players={}, gameState={ players:{}, bullets:[] }, myId=null;
     let gameActive=false, gameEnded=false;
-    let localTank=null; // ссылка на объект в gameState.players[myId]
+    let localTank=null;
     let camera={x:0,y:0};
     const CAMERA_LERP=0.12, VIEW_W=500, VIEW_H=400;
+    const POSITION_LERP=0.2; // сглаживание позиций соперников
+    
+    // Храним сглаженные позиции для отрисовки
+    let smoothPlayers = {};
     
     let moveUp=false, moveDown=false, moveLeft=false, moveRight=false;
     let joystickActive=false, joystickVector={x:0,y:0};
@@ -68,10 +71,8 @@
     
     function postMessage(type,data={}){ 
       window.parent.postMessage({type,...data},'*');
-      console.log('[Tanks] send', type, data);
     }
     
-    // Отправляем предполагаемое движение (клиент делает предсказание, сервер валидирует)
     function sendMove(px,py,angle){
       if(!gameActive||gameEnded||!localTank) return;
       const now=Date.now();
@@ -95,25 +96,37 @@
       statsPanel.innerHTML=html;
     }
     
+    // Сглаживание позиций всех игроков
+    function smoothPositions(){
+      if(!gameState.players) return;
+      for(let id in gameState.players){
+        const target = gameState.players[id];
+        if(!target) continue;
+        if(!smoothPlayers[id]){
+          smoothPlayers[id] = { px: target.px, py: target.py, angle: target.angle };
+        } else {
+          smoothPlayers[id].px += (target.px - smoothPlayers[id].px) * POSITION_LERP;
+          smoothPlayers[id].py += (target.py - smoothPlayers[id].py) * POSITION_LERP;
+          smoothPlayers[id].angle = target.angle; // угол не сглаживаем
+        }
+      }
+    }
+    
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
-      console.log('[Tanks] recv', d.type, d);
       switch(d.type){
         case 'init':
           roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{ players:{}, bullets:[] };
           myId=userId;
           localTank = gameState.players[myId];
           if(localTank) { camera.x=localTank.px; camera.y=localTank.py; }
+          smoothPlayers = {};
           gameActive=true; gameEnded=false; updateUI();
           break;
         case 'state_update':
           gameState=d.gameState||{ players:{}, bullets:[] };
           players=d.players||players;
           localTank = gameState.players[myId];
-          if(localTank) {
-            camera.x += (localTank.px - camera.x) * CAMERA_LERP;
-            camera.y += (localTank.py - camera.y) * CAMERA_LERP;
-          }
           if(gameState.winner){
             gameEnded=true; gameActive=false;
             messageBox.style.display='block';
@@ -129,7 +142,6 @@
       }
     });
     
-    // Предсказание движения на клиенте (для плавности)
     function applyLocalMovement(){
       if(!gameActive||gameEnded||!localTank) return;
       let dx=0, dy=0; const speed=isMobile?1.8:2.8;
@@ -151,9 +163,8 @@
       if(dx!==0||dy!==0||Math.abs(newAngle-localTank.angle)>0.01){
         const nx = localTank.px + dx;
         const ny = localTank.py + dy;
-        // Отправляем серверу наши намерения
         sendMove(nx, ny, newAngle);
-        // Оптимистично применяем локально (сервер поправит если что)
+        // Оптимистичное обновление
         localTank.px = nx;
         localTank.py = ny;
         localTank.angle = newAngle;
@@ -163,6 +174,13 @@
     function draw(){
       cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
       const scale=Math.min(cw/VIEW_W,ch/VIEW_H);
+      
+      // Камера следит за сглаженной позицией своего танка
+      if(localTank){
+        camera.x += (localTank.px - camera.x) * CAMERA_LERP;
+        camera.y += (localTank.py - camera.y) * CAMERA_LERP;
+      }
+      
       ctx.save(); ctx.translate(cw/2,ch/2); ctx.scale(scale,scale); ctx.translate(-camera.x,-camera.y);
       ctx.fillStyle='#1a2a1a'; ctx.fillRect(camera.x-VIEW_W/2,camera.y-VIEW_H/2,VIEW_W,VIEW_H);
       
@@ -175,9 +193,13 @@
         }
       }
       
-      for(let id in gameState.players){
-        const t=gameState.players[id]; if(!t) continue;
-        const col=['#E74C3C','#2ECC71','#F1C40F'][t.colorIndex]||'#888';
+      smoothPositions(); // обновляем сглаженные позиции
+      
+      for(let id in smoothPlayers){
+        const t = smoothPlayers[id];
+        const orig = gameState.players[id];
+        if(!orig) continue;
+        const col=['#E74C3C','#2ECC71','#F1C40F'][orig.colorIndex]||'#888';
         ctx.save(); ctx.translate(t.px,t.py); ctx.rotate(t.angle);
         ctx.fillStyle=col; ctx.fillRect(-TILE_SIZE/2,-TILE_SIZE/2,TILE_SIZE,TILE_SIZE);
         ctx.fillStyle='#333'; ctx.fillRect(-TILE_SIZE/2,TILE_SIZE/2-6,TILE_SIZE,6); ctx.fillRect(-TILE_SIZE/2,-TILE_SIZE/2,TILE_SIZE,6);
