@@ -71,19 +71,17 @@ export class Matchmaker {
         });
 
         const isClicker = game.id.includes('clicker') || (game.localPath && game.localPath.includes('clicker'));
-        const isSquare = game.id.includes('square') || (game.localPath && game.localPath.includes('square'));
 
         let initialGameState;
         if (isClicker) {
           initialGameState = {};
           selectedPlayers.forEach(pid => { initialGameState[pid] = 0; });
         } else {
+          // Для квадратиков (и любых других не-кликеров)
           initialGameState = { players: {}, bullets: [], winner: null };
-          if (isSquare) {
-            Object.keys(playersObj).forEach((pid, idx) => {
-              initialGameState.players[pid] = { x: 200 + idx * 100, y: 200 + idx * 80 };
-            });
-          }
+          Object.keys(playersObj).forEach((pid, idx) => {
+            initialGameState.players[pid] = { x: 200 + idx * 100, y: 200 + idx * 80 };
+          });
         }
 
         await set(sessionRef, {
@@ -120,6 +118,7 @@ export class Matchmaker {
         players: session.players
       });
 
+      // Проверка победы для кликера
       const gs = session.gameState;
       if (gs && !gs.players) {
         for (const [uid, score] of Object.entries(gs)) {
@@ -191,14 +190,7 @@ export class Matchmaker {
       const scoreRef = ref(this.rtdb, `gameSessions/${roomId}/gameState/${userId}`);
       await runTransaction(scoreRef, (current) => (current || 0) + 1);
     }
-    else if (data.action === 'move') {
-      const updates = {};
-      if (data.x !== undefined) {
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/x`] = data.x;
-        updates[`gameSessions/${roomId}/gameState/players/${userId}/y`] = data.y;
-        await update(ref(this.rtdb), updates);
-      }
-    }
+    // Больше ничего не нужно, квадратики используют player_update
   }
 
   async endGame(roomId, winnerId) {
