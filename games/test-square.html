@@ -33,7 +33,7 @@
     const canvas=document.getElementById('gameCanvas'), ctx=canvas.getContext('2d');
     let cw,ch;
     
-    let roomId=null, userId=null, nickname='', players={}, gameState={}, myId=null;
+    let roomId=null, userId=null, nickname='', players={}, gameState={ players:{} }, myId=null;
     let gameActive=false;
     let myPos={x:200, y:200};
     const SIZE=50;
@@ -66,45 +66,33 @@
     
     window.addEventListener('message',(e)=>{
       const d=e.data; if(!d||typeof d!=='object') return;
-      console.log('[Square] received:', d.type, d);
-      
       switch(d.type){
         case 'init':
-          roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{};
+          roomId=d.roomId; userId=d.userId; nickname=d.nickname; players=d.players||{}; gameState=d.gameState||{ players:{} };
           myId=userId;
-          
-          console.log('[Square] init gameState:', gameState);
-          if(gameState.players && gameState.players[myId]){
+          if(gameState.players[myId]){
             myPos.x=gameState.players[myId].x;
             myPos.y=gameState.players[myId].y;
           }
-          
           gameActive=true;
           statusDisplay.textContent=`Вы: ${nickname}`;
           sendPlayerUpdate();
           break;
-          
         case 'state_update':
-          gameState=d.gameState||{};
+          gameState=d.gameState||{ players:{} };
           players=d.players||players;
-          console.log('[Square] state_update gameState:', gameState);
-          
-          if(gameState.players && gameState.players[myId]){
+          if(gameState.players[myId]){
             myPos.x=gameState.players[myId].x;
             myPos.y=gameState.players[myId].y;
           }
-          
-          // Формируем статусную строку
           let txt=`Вы: (${myPos.x.toFixed(0)},${myPos.y.toFixed(0)}) | `;
           for(let id in players){
             if(id===myId) continue;
-            const p=gameState.players?.[id];
-            console.log(`[Square] opponent ${id}:`, p);
+            const p=gameState.players[id];
             if(p) txt+=`${players[id].nickname}: (${p.x?.toFixed(0)||0},${p.y?.toFixed(0)||0}) `;
           }
           statusDisplay.textContent=txt;
           break;
-          
         case 'game_over':
           gameActive=false;
           statusDisplay.textContent='Игра окончена';
@@ -133,7 +121,6 @@
       cw=canvas.width=window.innerWidth; ch=canvas.height=window.innerHeight;
       ctx.clearRect(0,0,cw,ch);
       
-      // Рисуем себя
       ctx.fillStyle='#3a9bdc';
       ctx.fillRect(myPos.x-SIZE/2, myPos.y-SIZE/2, SIZE, SIZE);
       ctx.fillStyle='white';
@@ -141,31 +128,23 @@
       ctx.textAlign='center';
       ctx.fillText(nickname||'Вы', myPos.x, myPos.y-30);
       
-      // Рисуем соперников
       if(gameState.players){
         for(let id in gameState.players){
           if(id===myId) continue;
           const p=gameState.players[id];
-          if(!p || typeof p.x !== 'number' || typeof p.y !== 'number'){
-            console.warn('[Square] invalid opponent data:', id, p);
-            continue;
-          }
+          if(!p||typeof p.x!=='number') continue;
           ctx.fillStyle='#e94560';
           ctx.fillRect(p.x-SIZE/2, p.y-SIZE/2, SIZE, SIZE);
           ctx.fillStyle='white';
           ctx.fillText(players[id]?.nickname||id, p.x, p.y-30);
         }
-      } else {
-        console.warn('[Square] gameState.players отсутствует');
       }
     }
     
-    // Джойстик и клавиатура
     function joyStart(e){ e.preventDefault(); joystickActive=true; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyMove(e){ e.preventDefault(); if(!joystickActive) return; const r=joystickBase.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; const t=e.touches[0]; updateJoystick(t.clientX-cx,t.clientY-cy); }
     function joyEnd(e){ e.preventDefault(); joystickActive=false; joystickVector={x:0,y:0}; joystickThumb.style.transform='translate(0px,0px)'; }
     function updateJoystick(dx,dy){ const dist=Math.hypot(dx,dy), clamped=Math.min(dist,joystickMaxDist), ang=Math.atan2(dy,dx), lx=Math.cos(ang)*clamped, ly=Math.sin(ang)*clamped; joystickThumb.style.transform=`translate(${lx}px,${ly}px)`; joystickVector=dist>5?{x:dx/joystickMaxDist,y:dy/joystickMaxDist}:{x:0,y:0}; }
-    
     function keyDown(e){
       if(!gameActive) return;
       const k=e.code;
@@ -192,10 +171,7 @@
     canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
     
     function loop(){
-      if(gameActive){
-        moveLocal();
-        sendPlayerUpdate();
-      }
+      if(gameActive) moveLocal();
       draw();
       requestAnimationFrame(loop);
     }
